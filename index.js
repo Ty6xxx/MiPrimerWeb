@@ -37,7 +37,7 @@ botState.setSendMessage((msg) => {
 // ========================
 // Discord Events
 // ========================
-discord.once('ready', async () => {
+discord.once('clientReady', async () => {
   console.log(`[Discord] Bot conectado como ${discord.user.tag}`);
 
   // Buscar canal de notificaciones
