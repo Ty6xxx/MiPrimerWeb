@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rust+ Bot - Setup Wizard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: #0a0a1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 30px;
+      text-align: center;
+      border-bottom: 2px solid #cd412b;
+    }
+    .header h1 {
+      font-size: 2em;
+      color: #cd412b;
+      margin-bottom: 5px;
+    }
+    .header p { color: #888; }
+
+    .container {
+      max-width: 700px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+
+    /* Progress Bar */
+    .progress-bar {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      position: relative;
+    }
+    .progress-bar::before {
+      content: '';
+      position: absolute;
+      top: 20px;
+      left: 50px;
+      right: 50px;
+      height: 3px;
+      background: #333;
+      z-index: 0;
+    }
+    .step-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 1;
+      cursor: pointer;
+    }
+    .step-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #222;
+      border: 3px solid #444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-bottom: 8px;
+      transition: all 0.3s;
+    }
+    .step-circle.active {
+      border-color: #cd412b;
+      background: #cd412b;
+      color: #fff;
+    }
+    .step-circle.done {
+      border-color: #4caf50;
+      background: #4caf50;
+      color: #fff;
+    }
+    .step-label {
+      font-size: 0.75em;
+      color: #888;
+      text-align: center;
+    }
+    .step-label.active { color: #cd412b; }
+
+    /* Panels */
+    .panel {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 30px;
+      display: none;
+    }
+    .panel.active { display: block; }
+    .panel h2 {
+      color: #cd412b;
+      margin-bottom: 20px;
+      font-size: 1.4em;
+    }
+    .panel h3 {
+      color: #e0e0e0;
+      margin: 15px 0 10px;
+      font-size: 1.1em;
+    }
+
+    /* Instructions */
+    .instructions {
+      background: #1a1a35;
+      border-left: 3px solid #cd412b;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+    .instructions ol { padding-left: 20px; }
+    .instructions li { margin-bottom: 8px; }
+    .instructions a {
+      color: #5c7cfa;
+      text-decoration: none;
+    }
+    .instructions a:hover { text-decoration: underline; }
+
+    /* Form */
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      color: #aaa;
+      font-size: 0.9em;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      background: #0a0a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 1em;
+      font-family: monospace;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #cd412b;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: #cd412b;
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: #e04530; }
+    .btn-secondary {
+      background: #2a2a4a;
+      color: #e0e0e0;
+    }
+    .btn-secondary:hover:not(:disabled) { background: #3a3a5a; }
+    .btn-success {
+      background: #4caf50;
+      color: #fff;
+    }
+    .btn-success:hover:not(:disabled) { background: #66bb6a; }
+    .btn-steam {
+      background: #171a21;
+      color: #fff;
+      border: 1px solid #2a475e;
+    }
+    .btn-steam:hover:not(:disabled) { background: #2a475e; }
+
+    .btn-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 25px;
+      gap: 10px;
+    }
+
+    /* Status */
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin: 15px 0;
+      font-size: 0.9em;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.info { background: #1a2744; border: 1px solid #2a4a7a; color: #7ab5ff; }
+    .status.success { background: #1a3a1a; border: 1px solid #2a6a2a; color: #7aff7a; }
+    .status.error { background: #3a1a1a; border: 1px solid #6a2a2a; color: #ff7a7a; }
+    .status.warning { background: #3a3a1a; border: 1px solid #6a6a2a; color: #ffff7a; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Data display */
+    .data-card {
+      background: #0a0a1a;
+      border: 1px solid #2a6a2a;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #1a1a2e;
+    }
+    .data-row:last-child { border-bottom: none; }
+    .data-key { color: #888; }
+    .data-value { color: #4caf50; font-family: monospace; }
+
+    /* Final */
+    .success-banner {
+      text-align: center;
+      padding: 30px;
+    }
+    .success-banner .big-check {
+      font-size: 4em;
+      color: #4caf50;
+      margin-bottom: 15px;
+    }
+    .code-block {
+      background: #0a0a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 15px;
+      font-family: monospace;
+      color: #4caf50;
+      margin: 15px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Rust+ Discord Bot</h1>
+    <p>Setup Wizard - Configuracion paso a paso</p>
+  </div>
+
+  <div class="container">
+    <!-- Progress Bar -->
+    <div class="progress-bar">
+      <div class="step-indicator" onclick="goToStep(1)">
+        <div class="step-circle active" id="circle-1">1</div>
+        <span class="step-label active" id="label-1">Discord</span>
+      </div>
+      <div class="step-indicator" onclick="goToStep(2)">
+        <div class="step-circle" id="circle-2">2</div>
+        <span class="step-label" id="label-2">Rust+ FCM</span>
+      </div>
+      <div class="step-indicator" onclick="goToStep(3)">
+        <div class="step-circle" id="circle-3">3</div>
+        <span class="step-label" id="label-3">Steam</span>
+      </div>
+      <div class="step-indicator" onclick="goToStep(4)">
+        <div class="step-circle" id="circle-4">4</div>
+        <span class="step-label" id="label-4">Pairing</span>
+      </div>
+      <div class="step-indicator" onclick="goToStep(5)">
+        <div class="step-circle" id="circle-5">5</div>
+        <span class="step-label" id="label-5">Guardar</span>
+      </div>
+    </div>
+
+    <!-- ======================== -->
+    <!-- PASO 1: Discord -->
+    <!-- ======================== -->
+    <div class="panel active" id="panel-1">
+      <h2>Paso 1: Configuracion de Discord</h2>
+
+      <div class="instructions">
+        <ol>
+          <li>Ve a <a href="https://discord.com/developers/applications" target="_blank">Discord Developer Portal</a></li>
+          <li>Click en <strong>"New Application"</strong> y ponle un nombre</li>
+          <li>En la seccion <strong>Bot</strong>, click en <strong>"Add Bot"</strong></li>
+          <li>Click en <strong>"Reset Token"</strong> y copia el token</li>
+          <li>En <strong>OAuth2</strong>, copia el <strong>Client ID</strong></li>
+          <li>Activa los intents: <strong>Server Members</strong> y <strong>Message Content</strong></li>
+        </ol>
+      </div>
+
+      <div class="form-group">
+        <label>Discord Bot Token</label>
+        <input type="password" id="discord-token" placeholder="Tu token de Discord Bot">
+      </div>
+
+      <div class="form-group">
+        <label>Discord Client ID</label>
+        <input type="text" id="discord-client-id" placeholder="Ej: 123456789012345678">
+      </div>
+
+      <div class="form-group">
+        <label>Discord Channel ID (canal para notificaciones)</label>
+        <input type="text" id="discord-channel-id" placeholder="Click derecho en canal > Copiar ID">
+      </div>
+
+      <div id="invite-link" style="display:none">
+        <h3>Invita el bot a tu servidor:</h3>
+        <div class="code-block" id="invite-url"></div>
+        <a id="invite-anchor" href="#" target="_blank" class="btn btn-secondary">Abrir link de invitacion</a>
+      </div>
+
+      <div class="btn-row">
+        <div></div>
+        <button class="btn btn-primary" onclick="completeStep1()">Siguiente</button>
+      </div>
+    </div>
+
+    <!-- ======================== -->
+    <!-- PASO 2: FCM Register -->
+    <!-- ======================== -->
+    <div class="panel" id="panel-2">
+      <h2>Paso 2: Registro FCM (Firebase)</h2>
+
+      <p>Este paso registra tu bot con Firebase Cloud Messaging para recibir notificaciones de pairing de Rust+.</p>
+
+      <div id="status-fcm" class="status"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(1)">Atras</button>
+        <button class="btn btn-primary" id="btn-fcm" onclick="registerFCM()">Registrar con FCM</button>
+      </div>
+    </div>
+
+    <!-- ======================== -->
+    <!-- PASO 3: Steam Auth -->
+    <!-- ======================== -->
+    <div class="panel" id="panel-3">
+      <h2>Paso 3: Vincular cuenta de Steam</h2>
+
+      <p>Necesitas iniciar sesion con tu cuenta de Steam para vincular el bot con Rust+.</p>
+
+      <div class="instructions">
+        <ol>
+          <li>Click en el boton "Iniciar sesion con Steam"</li>
+          <li>Se abrira una ventana para login de Steam</li>
+          <li>Inicia sesion con la cuenta que usas en Rust</li>
+          <li>La ventana se cerrara automaticamente al completar</li>
+        </ol>
+      </div>
+
+      <div id="status-steam" class="status"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(2)">Atras</button>
+        <button class="btn btn-steam" id="btn-steam" onclick="loginSteam()">Iniciar sesion con Steam</button>
+      </div>
+    </div>
+
+    <!-- ======================== -->
+    <!-- PASO 4: Pairing -->
+    <!-- ======================== -->
+    <div class="panel" id="panel-4">
+      <h2>Paso 4: Emparejar servidor de Rust</h2>
+
+      <p>Ahora necesitas emparejar tu servidor desde el juego.</p>
+
+      <div class="instructions">
+        <ol>
+          <li>Abre Rust y conectate a tu servidor</li>
+          <li>Presiona <strong>ESC</strong> para abrir el menu</li>
+          <li>Ve a la pestana <strong>Rust+</strong></li>
+          <li>Click en <strong>"Pair With Server"</strong></li>
+          <li>Los datos se llenaran automaticamente aqui</li>
+        </ol>
+      </div>
+
+      <div id="status-pairing" class="status"></div>
+
+      <div id="pairing-data" style="display:none">
+        <h3>Datos del servidor recibidos:</h3>
+        <div class="data-card">
+          <div class="data-row">
+            <span class="data-key">Servidor</span>
+            <span class="data-value" id="pair-server-name">-</span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">IP</span>
+            <span class="data-value" id="pair-server-ip">-</span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Puerto</span>
+            <span class="data-value" id="pair-server-port">-</span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Player ID</span>
+            <span class="data-value" id="pair-player-id">-</span>
+          </div>
+          <div class="data-row">
+            <span class="data-key">Player Token</span>
+            <span class="data-value" id="pair-player-token">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual entry fallback -->
+      <div id="manual-entry" style="display:none; margin-top: 20px;">
+        <h3>Entrada manual (si el pairing automatico falla):</h3>
+        <div class="form-group">
+          <label>Server IP</label>
+          <input type="text" id="manual-ip" placeholder="Ej: 192.168.1.100">
+        </div>
+        <div class="form-group">
+          <label>App Port</label>
+          <input type="text" id="manual-port" placeholder="Ej: 28082">
+        </div>
+        <div class="form-group">
+          <label>Player ID (Steam ID 64-bit)</label>
+          <input type="text" id="manual-player-id" placeholder="Ej: 76561198000000000">
+        </div>
+        <div class="form-group">
+          <label>Player Token</label>
+          <input type="text" id="manual-player-token" placeholder="Tu player token">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(3)">Atras</button>
+        <div style="display:flex; gap:10px">
+          <button class="btn btn-secondary" id="btn-manual" onclick="toggleManual()">Entrada manual</button>
+          <button class="btn btn-primary" id="btn-listen" onclick="startListening()">Escuchar pairing</button>
+          <button class="btn btn-success" id="btn-next-4" onclick="completeStep4()" style="display:none">Siguiente</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================== -->
+    <!-- PASO 5: Guardar -->
+    <!-- ======================== -->
+    <div class="panel" id="panel-5">
+      <h2>Paso 5: Guardar configuracion</h2>
+
+      <p>Revisa los datos y guarda la configuracion:</p>
+
+      <div class="data-card" id="summary-card">
+        <!-- Se llena dinamicamente -->
+      </div>
+
+      <div id="status-save" class="status"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(4)">Atras</button>
+        <button class="btn btn-success" onclick="saveConfig()">Guardar y finalizar</button>
+      </div>
+
+      <div id="final-success" style="display:none">
+        <div class="success-banner">
+          <div class="big-check">&#10003;</div>
+          <h2>Configuracion completada!</h2>
+          <p style="margin-top:15px; color:#888">Ahora puedes iniciar el bot:</p>
+          <div class="code-block">npm start</div>
+          <p style="color:#888; font-size:0.9em">El bot se conectara a Discord y a tu servidor de Rust automaticamente.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentStep = 1;
+    const completedSteps = new Set();
+    let pairingPollInterval = null;
+    let manualMode = false;
+
+    // ========================
+    // Navigation
+    // ========================
+    function goToStep(step) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(`panel-${step}`).classList.add('active');
+
+      for (let i = 1; i <= 5; i++) {
+        const circle = document.getElementById(`circle-${i}`);
+        const label = document.getElementById(`label-${i}`);
+        circle.className = 'step-circle';
+        label.className = 'step-label';
+
+        if (i === step) {
+          circle.classList.add('active');
+          label.classList.add('active');
+        }
+        if (completedSteps.has(i)) {
+          circle.classList.add('done');
+          circle.textContent = '\u2713';
+        }
+      }
+      currentStep = step;
+
+      if (step === 5) buildSummary();
+    }
+
+    function showStatus(id, type, message) {
+      const el = document.getElementById(id);
+      el.className = `status show ${type}`;
+      el.innerHTML = message;
+    }
+
+    // ========================
+    // PASO 1: Discord
+    // ========================
+    function completeStep1() {
+      const token = document.getElementById('discord-token').value.trim();
+      const clientId = document.getElementById('discord-client-id').value.trim();
+
+      if (!token || !clientId) {
+        alert('Completa al menos el Token y Client ID de Discord.');
+        return;
+      }
+
+      completedSteps.add(1);
+      goToStep(2);
+    }
+
+    // Generate invite link on input
+    document.getElementById('discord-client-id').addEventListener('input', function() {
+      const clientId = this.value.trim();
+      const linkDiv = document.getElementById('invite-link');
+      if (clientId.length > 15) {
+        const url = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=2147483648&scope=bot%20applications.commands`;
+        document.getElementById('invite-url').textContent = url;
+        document.getElementById('invite-anchor').href = url;
+        linkDiv.style.display = 'block';
+      } else {
+        linkDiv.style.display = 'none';
+      }
+    });
+
+    // ========================
+    // PASO 2: FCM Register
+    // ========================
+    async function registerFCM() {
+      const btn = document.getElementById('btn-fcm');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Registrando...';
+      showStatus('status-fcm', 'info', 'Registrando con Firebase Cloud Messaging...');
+
+      try {
+        const res = await fetch('/api/fcm-register', { method: 'POST' });
+        const data = await res.json();
+
+        if (data.success) {
+          showStatus('status-fcm', 'success', 'FCM registrado exitosamente!');
+          completedSteps.add(2);
+          btn.innerHTML = '\u2713 Registrado';
+          setTimeout(() => goToStep(3), 1000);
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        showStatus('status-fcm', 'error', `Error: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = 'Reintentar';
+      }
+    }
+
+    // ========================
+    // PASO 3: Steam Auth
+    // ========================
+    async function loginSteam() {
+      const btn = document.getElementById('btn-steam');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Abriendo Steam...';
+      showStatus('status-steam', 'info', 'Abriendo ventana de login de Steam...');
+
+      try {
+        const res = await fetch('/api/steam-auth-url');
+        const data = await res.json();
+
+        // Abrir ventana de Steam login
+        const steamWindow = window.open(data.url, 'steam-login', 'width=800,height=600');
+
+        // Escuchar mensaje de la ventana
+        window.addEventListener('message', async function handler(event) {
+          if (event.data && event.data.type === 'steam-auth-success') {
+            window.removeEventListener('message', handler);
+            showStatus('status-steam', 'success', 'Steam vinculado exitosamente!');
+
+            // Registrar con Rust Companion API
+            showStatus('status-steam', 'info', 'Registrando con Rust Companion API...');
+            const regRes = await fetch('/api/rust-register', { method: 'POST' });
+            const regData = await regRes.json();
+
+            if (regData.success) {
+              showStatus('status-steam', 'success', 'Steam vinculado y registrado con Rust+!');
+              completedSteps.add(3);
+              btn.innerHTML = '\u2713 Vinculado';
+              setTimeout(() => goToStep(4), 1000);
+            } else {
+              showStatus('status-steam', 'error', `Error registrando: ${regData.error}`);
+              btn.disabled = false;
+              btn.textContent = 'Reintentar';
+            }
+          }
+        });
+
+        // Timeout si no se completa
+        setTimeout(() => {
+          if (!completedSteps.has(3)) {
+            btn.disabled = false;
+            btn.textContent = 'Reintentar Steam Login';
+            showStatus('status-steam', 'warning', 'El login de Steam no se completo. Reintenta o verifica tu navegador.');
+          }
+        }, 120000);
+      } catch (err) {
+        showStatus('status-steam', 'error', `Error: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = 'Reintentar';
+      }
+    }
+
+    // ========================
+    // PASO 4: Pairing
+    // ========================
+    async function startListening() {
+      const btn = document.getElementById('btn-listen');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Escuchando...';
+      showStatus('status-pairing', 'info', 'Esperando notificacion de pairing... Abre Rust y haz "Pair With Server".');
+
+      try {
+        const res = await fetch('/api/start-listening', { method: 'POST' });
+        const data = await res.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        // Poll para verificar pairing
+        pairingPollInterval = setInterval(async () => {
+          const statusRes = await fetch('/api/pairing-status');
+          const statusData = await statusRes.json();
+
+          if (statusData.success) {
+            clearInterval(pairingPollInterval);
+            pairingPollInterval = null;
+
+            const d = statusData.data;
+            document.getElementById('pair-server-name').textContent = d.serverName;
+            document.getElementById('pair-server-ip').textContent = d.serverIp;
+            document.getElementById('pair-server-port').textContent = d.serverPort;
+            document.getElementById('pair-player-id').textContent = d.playerId;
+            document.getElementById('pair-player-token').textContent = d.playerToken;
+
+            document.getElementById('pairing-data').style.display = 'block';
+            document.getElementById('btn-next-4').style.display = 'inline-flex';
+            btn.style.display = 'none';
+
+            showStatus('status-pairing', 'success', 'Servidor emparejado exitosamente!');
+          }
+        }, 3000);
+      } catch (err) {
+        showStatus('status-pairing', 'error', `Error: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = 'Reintentar';
+      }
+    }
+
+    function toggleManual() {
+      manualMode = !manualMode;
+      document.getElementById('manual-entry').style.display = manualMode ? 'block' : 'none';
+      document.getElementById('btn-manual').textContent = manualMode ? 'Ocultar manual' : 'Entrada manual';
+      if (manualMode) {
+        document.getElementById('btn-next-4').style.display = 'inline-flex';
+      }
+    }
+
+    function completeStep4() {
+      completedSteps.add(4);
+      goToStep(5);
+    }
+
+    // ========================
+    // PASO 5: Guardar
+    // ========================
+    function buildSummary() {
+      const card = document.getElementById('summary-card');
+      const discordToken = document.getElementById('discord-token').value.trim();
+      const clientId = document.getElementById('discord-client-id').value.trim();
+      const channelId = document.getElementById('discord-channel-id').value.trim();
+
+      const serverName = document.getElementById('pair-server-name')?.textContent || '-';
+      const serverIp = document.getElementById('pair-server-ip')?.textContent || '-';
+      const serverPort = document.getElementById('pair-server-port')?.textContent || '-';
+      const playerId = document.getElementById('pair-player-id')?.textContent || '-';
+
+      // Check manual entries
+      const mIp = document.getElementById('manual-ip')?.value.trim();
+      const mPort = document.getElementById('manual-port')?.value.trim();
+      const mPid = document.getElementById('manual-player-id')?.value.trim();
+
+      card.innerHTML = `
+        <div class="data-row"><span class="data-key">Discord Token</span><span class="data-value">${discordToken ? '\u2022'.repeat(20) : 'No configurado'}</span></div>
+        <div class="data-row"><span class="data-key">Discord Client ID</span><span class="data-value">${clientId || 'No configurado'}</span></div>
+        <div class="data-row"><span class="data-key">Canal de Notificaciones</span><span class="data-value">${channelId || 'No configurado'}</span></div>
+        <hr style="border-color:#2a2a4a; margin:10px 0">
+        <div class="data-row"><span class="data-key">Servidor Rust</span><span class="data-value">${mIp ? 'Manual' : serverName}</span></div>
+        <div class="data-row"><span class="data-key">Server IP</span><span class="data-value">${mIp || serverIp}</span></div>
+        <div class="data-row"><span class="data-key">App Port</span><span class="data-value">${mPort || serverPort}</span></div>
+        <div class="data-row"><span class="data-key">Player ID</span><span class="data-value">${mPid || playerId}</span></div>
+      `;
+    }
+
+    async function saveConfig() {
+      const mIp = document.getElementById('manual-ip')?.value.trim();
+      const mPort = document.getElementById('manual-port')?.value.trim();
+      const mPid = document.getElementById('manual-player-id')?.value.trim();
+      const mToken = document.getElementById('manual-player-token')?.value.trim();
+
+      const body = {
+        discordToken: document.getElementById('discord-token').value.trim(),
+        discordClientId: document.getElementById('discord-client-id').value.trim(),
+        discordChannelId: document.getElementById('discord-channel-id').value.trim(),
+      };
+
+      // Si hay datos manuales, incluirlos
+      if (mIp && mPort && mPid && mToken) {
+        body.rust = {
+          serverIp: mIp,
+          serverPort: mPort,
+          playerId: mPid,
+          playerToken: mToken,
+        };
+      }
+
+      showStatus('status-save', 'info', 'Guardando configuracion...');
+
+      try {
+        const res = await fetch('/api/save-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          showStatus('status-save', 'success', 'Configuracion guardada!');
+          document.getElementById('final-success').style.display = 'block';
+          completedSteps.add(5);
+
+          // Update progress circles
+          for (let i = 1; i <= 5; i++) {
+            const circle = document.getElementById(`circle-${i}`);
+            circle.classList.add('done');
+            circle.textContent = '\u2713';
+          }
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        showStatus('status-save', 'error', `Error: ${err.message}`);
+      }
+    }
+  </script>
+</body>
+</html>
