@@ -116,7 +116,7 @@ rustClient.on('teamMessage', async (msg) => {
 let teamMonitorTimer = null;
 
 function startTeamMonitoring() {
-  // Polling cada 30 segundos para detectar cambios
+  // Polling cada 15 segundos para detectar cambios de equipo
   teamMonitorTimer = setInterval(async () => {
     try {
       const teamInfo = await rustClient.getTeamInfo();
@@ -160,7 +160,7 @@ function startTeamMonitoring() {
     } catch (err) {
       // Silenciar errores de polling
     }
-  }, 30000);
+  }, 15000);
 }
 
 // ========================

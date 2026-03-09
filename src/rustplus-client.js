@@ -194,7 +194,7 @@ class RustPlusClient extends EventEmitter {
       } catch (err) {
         // Silenciar errores de polling
       }
-    }, 30000); // Cada 30 segundos
+    }, 10000); // Cada 10 segundos (como el bot de referencia)
   }
 
   stopEventPolling() {
@@ -245,14 +245,12 @@ class RustPlusClient extends EventEmitter {
   }
 
   getMarkerTypeName(type) {
+    // Solo emitir eventos relevantes (no Player, VendingMachine, GenericRadius)
     const types = {
-      1: 'Player',
       2: 'Explosion',
-      3: 'VendingMachine',
       4: 'CH47 (Chinook)',
       5: 'CargoShip',
       6: 'Crate',
-      7: 'GenericRadius',
       8: 'PatrolHelicopter',
     };
     return types[type] || null;

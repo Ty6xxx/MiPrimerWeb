@@ -110,9 +110,11 @@ class BotState {
           changes.disconnected.push(m.name);
         }
 
-        // Muerte
+        // Muerte (usar posicion previa ya que al morir puede cambiar a spawn)
         if (prev.isAlive && !m.isAlive) {
-          changes.died.push({ name: m.name, x: m.x, y: m.y, deathCount: (prev.deathCount || 0) + 1 });
+          const deathX = prev.x || m.x;
+          const deathY = prev.y || m.y;
+          changes.died.push({ name: m.name, x: deathX, y: deathY, deathCount: (prev.deathCount || 0) + 1 });
         }
 
         // AFK detection (no se movio en 5 min)
@@ -141,7 +143,7 @@ class BotState {
           y: m.y,
           lastMoved,
           isAfk: wasAfk,
-          deathCount: m.isAlive ? (prev.deathCount || 0) : (changes.died.find(d => d.name === m.name) ? (prev.deathCount || 0) + 1 : (prev.deathCount || 0)),
+          deathCount: (prev.isAlive && !m.isAlive) ? (prev.deathCount || 0) + 1 : (prev.deathCount || 0),
           spawnTime: (!prev.isAlive && m.isAlive) ? now : (prev.spawnTime || now),
         });
       } else {
