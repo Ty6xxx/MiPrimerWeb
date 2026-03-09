@@ -147,7 +147,7 @@
         Agrega el bot a tu Discord
       </h2>
       <p>Hace click en el boton para agregar el bot a tu servidor de Discord.</p>
-      <a href="#" id="btn-invite" class="btn btn-discord" target="_blank">Agregar bot a Discord</a>
+      <a href="#" id="btn-invite" class="btn btn-discord" target="_blank" onclick="markStep1Done()">Agregar bot a Discord</a>
     </div>
 
     <!-- PASO 2: Login Rust+ -->
@@ -205,6 +205,23 @@
           document.getElementById('btn-invite').style.opacity = '0.5';
         }
       });
+
+    // ========================
+    // Paso 1: Agregar bot a Discord
+    // ========================
+    function markStep1Done() {
+      localStorage.setItem('step1done', 'true');
+      document.getElementById('step-1').classList.add('done');
+      const btn = document.getElementById('btn-invite');
+      btn.style.opacity = '0.5';
+      btn.style.pointerEvents = 'none';
+      btn.textContent = 'Bot agregado';
+    }
+
+    // Restaurar paso 1 si ya fue completado
+    if (localStorage.getItem('step1done') === 'true') {
+      markStep1Done();
+    }
 
     // ========================
     // Rust+ login
