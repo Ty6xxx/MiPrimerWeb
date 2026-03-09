@@ -22,7 +22,6 @@ cp .env.example .env
 ```
 DISCORD_TOKEN=         # Token del bot de Discord
 DISCORD_CLIENT_ID=     # Client ID de la app de Discord
-DISCORD_CHANNEL_ID=    # ID del canal para notificaciones
 RUST_SERVER_IP=        # IP del servidor de Rust
 RUST_SERVER_PORT=      # App Port (del server.cfg)
 RUST_PLAYER_ID=        # Tu Steam ID de 64 bits
