@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { register: registerFCM } = require('@liamcottle/push-receiver/src/android/fcm');
+const AndroidFCM = require('@liamcottle/push-receiver/src/android/fcm');
 const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
 
 const app = express();
@@ -46,7 +46,7 @@ const RUST_COMPANION = {
 async function initFCM() {
   try {
     console.log('[Setup] Registrando con FCM...');
-    state.fcmCredentials = await registerFCM({
+    state.fcmCredentials = await AndroidFCM.register({
       apiKey: RUST_COMPANION.apiKey,
       projectId: RUST_COMPANION.projectId,
       gcmSenderId: RUST_COMPANION.gcmSenderId,
@@ -55,6 +55,8 @@ async function initFCM() {
       androidPackageCert: RUST_COMPANION.androidPackageCert,
     });
     console.log('[Setup] FCM registrado OK');
+    console.log('[Setup] GCM androidId:', state.fcmCredentials.gcm.androidId ? 'OK' : 'FALTA');
+    console.log('[Setup] FCM token:', state.fcmCredentials.fcm.token ? 'OK' : 'FALTA');
 
     const expoPushTokenResponse = await fetch(
       'https://exp.host/--/api/v2/push/getExpoPushToken',
@@ -175,9 +177,12 @@ app.get('/api/rust-callback', async (req, res) => {
     if (state.fcmCredentials) {
       if (state.pushClient) state.pushClient.destroy();
 
+      // Client necesita: androidId, securityToken, persistentIds
+      await PushReceiverClient.init();
       state.pushClient = new PushReceiverClient(
-        state.fcmCredentials,
-        state.fcmCredentials.fcm.persistentIds || []
+        state.fcmCredentials.gcm.androidId,
+        state.fcmCredentials.gcm.securityToken,
+        []
       );
 
       state.pushClient.on('ON_NOTIFICATION_RECEIVED', (notification) => {
