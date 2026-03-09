@@ -65,7 +65,7 @@ async function initFCM() {
           type: 'fcm',
           deviceId: state.fcmCredentials.fcm.token,
           development: false,
-          experienceId: '@anthropic/rust-companion',
+          experienceId: '@nicatronTg/rust-companion-app',
           appId: 'com.facepunch.rust.companion',
           deviceToken: state.fcmCredentials.fcm.token,
           projectId: RUST_COMPANION.expoProjectId,
@@ -73,11 +73,17 @@ async function initFCM() {
       }
     );
     const expoPushTokenData = await expoPushTokenResponse.json();
-    state.expoPushToken = expoPushTokenData.data.expoPushToken;
+    console.log('[Setup] Expo response:', JSON.stringify(expoPushTokenData));
+    if (expoPushTokenData.data && expoPushTokenData.data.expoPushToken) {
+      state.expoPushToken = expoPushTokenData.data.expoPushToken;
+      console.log('[Setup] ExpoPushToken:', state.expoPushToken);
+    } else {
+      console.error('[Setup] No se obtuvo ExpoPushToken:', JSON.stringify(expoPushTokenData));
+    }
     state.ready = true;
-    console.log('[Setup] Listo para recibir clientes');
+    console.log('[Setup] FCM listo. Esperando clientes...');
   } catch (err) {
-    console.error('[Setup] Error en FCM:', err);
+    console.error('[Setup] Error en FCM:', err.message);
   }
 }
 
@@ -140,7 +146,9 @@ app.get('/api/rust-callback', async (req, res) => {
   try {
     if (state.expoPushToken) {
       const deviceId = 'rustbot-' + Date.now();
-      await fetch('https://companion-rust.facepunch.com:443/api/push/register', {
+      console.log('[Setup] Registrando push con Facepunch...');
+      console.log('[Setup] ExpoPushToken:', state.expoPushToken);
+      const pushRes = await fetch('https://companion-rust.facepunch.com:443/api/push/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -153,10 +161,13 @@ app.get('/api/rust-callback', async (req, res) => {
           PushToken: state.expoPushToken,
         }),
       });
-      console.log('[Setup] Registrado con Rust Companion API');
+      const pushResText = await pushRes.text();
+      console.log('[Setup] Respuesta de Facepunch:', pushRes.status, pushResText);
+    } else {
+      console.error('[Setup] No hay ExpoPushToken! FCM no se inicializo correctamente.');
     }
   } catch (err) {
-    console.error('[Setup] Error registrando push:', err);
+    console.error('[Setup] Error registrando push:', err.message);
   }
 
   // Iniciar escucha de pairing
@@ -170,18 +181,30 @@ app.get('/api/rust-callback', async (req, res) => {
       );
 
       state.pushClient.on('ON_NOTIFICATION_RECEIVED', (notification) => {
+        console.log('[Setup] Notificacion recibida:', JSON.stringify(notification).substring(0, 200));
         try {
+          let body = null;
+
+          // Intentar parsear de diferentes formatos
           if (notification.data && notification.data.body) {
-            const body = JSON.parse(notification.data.body);
+            body = JSON.parse(notification.data.body);
+          } else if (notification.data && notification.data.title) {
+            // Algunas notificaciones vienen con otro formato
+            console.log('[Setup] Notificacion (title):', notification.data.title);
+          }
+
+          if (body) {
+            console.log('[Setup] Body parseado:', JSON.stringify(body).substring(0, 300));
             if (body.ip && body.port && body.playerId && body.playerToken) {
               state.pairingData = {
                 serverIp: body.ip,
                 serverPort: body.port.toString(),
                 playerId: body.playerId.toString(),
                 playerToken: body.playerToken.toString(),
-                serverName: body.name || 'Unknown Server',
+                serverName: body.name || body.desc || 'Unknown Server',
               };
-              console.log('[Setup] Pairing recibido:', state.pairingData.serverName);
+              console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
+              console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
             }
           }
         } catch (e) {
@@ -189,8 +212,12 @@ app.get('/api/rust-callback', async (req, res) => {
         }
       });
 
+      state.pushClient.on('ON_MESSAGE_RECEIVED', (msg) => {
+        console.log('[Setup] Mensaje FCM recibido:', JSON.stringify(msg).substring(0, 200));
+      });
+
       await state.pushClient.connect();
-      console.log('[Setup] Escuchando pairing...');
+      console.log('[Setup] Push client conectado, escuchando pairing...');
     }
   } catch (err) {
     console.error('[Setup] Error iniciando escucha:', err);

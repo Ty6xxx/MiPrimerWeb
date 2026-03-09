@@ -162,6 +162,7 @@
 
       <div id="pairing-area" style="display:none; margin-top:15px;">
         <p style="color:#f0ad4e;">Ahora abre Rust > ESC > Rust+ > <strong>Pair With Server</strong></p>
+        <p style="color:#888; font-size:0.85em; margin-top:8px;">Esperando pairing... <span id="pair-timer">0s</span></p>
         <div id="server-data" style="display:none">
           <div class="server-info">
             <div class="srv-row"><span class="srv-k">Servidor</span><span class="srv-v" id="s-name">-</span></div>
@@ -240,11 +241,18 @@
     if (params.get('rust') === 'ok') {
       // Login exitoso, esperando pairing
       document.getElementById('step-1').classList.add('done');
-      document.getElementById('step-2').classList.add('done');
-      document.getElementById('rust-badge').className = 'badge badge-ok';
-      document.getElementById('rust-badge').textContent = 'Recibido';
+      document.getElementById('rust-badge').className = 'badge badge-listen';
+      document.getElementById('rust-badge').textContent = 'Esperando...';
       document.getElementById('btn-rust').style.display = 'none';
       document.getElementById('pairing-area').style.display = 'block';
+
+      // Timer visual
+      let pairSeconds = 0;
+      const timerInterval = setInterval(() => {
+        pairSeconds++;
+        const el = document.getElementById('pair-timer');
+        if (el) el.textContent = pairSeconds + 's';
+      }, 1000);
 
       // Poll pairing
       const poll = setInterval(async () => {
@@ -253,15 +261,8 @@
           const d = await res.json();
           if (d.paired && d.pairingData) {
             clearInterval(poll);
-            document.getElementById('rust-badge').className = 'badge badge-ok';
-            document.getElementById('rust-badge').textContent = 'Recibido';
-            document.getElementById('s-name').textContent = d.pairingData.serverName;
-            document.getElementById('s-ip').textContent = d.pairingData.serverIp;
-            document.getElementById('s-port').textContent = d.pairingData.serverPort;
-            document.getElementById('s-pid').textContent = d.pairingData.playerId;
-            document.getElementById('server-data').style.display = 'block';
-            document.getElementById('step-2').classList.add('done');
-            document.getElementById('step-save').style.display = 'block';
+            clearInterval(timerInterval);
+            showPairingData(d.pairingData);
           }
         } catch(e) {}
       }, 3000);
@@ -272,6 +273,21 @@
     if (params.get('error')) {
       alert('Error al iniciar sesion en Rust+. Intenta de nuevo.');
       window.history.replaceState({}, '', '/');
+    }
+
+    // ========================
+    // Mostrar datos de pairing
+    // ========================
+    function showPairingData(pairingData) {
+      document.getElementById('rust-badge').className = 'badge badge-ok';
+      document.getElementById('rust-badge').textContent = 'Recibido';
+      document.getElementById('s-name').textContent = pairingData.serverName;
+      document.getElementById('s-ip').textContent = pairingData.serverIp;
+      document.getElementById('s-port').textContent = pairingData.serverPort;
+      document.getElementById('s-pid').textContent = pairingData.playerId;
+      document.getElementById('server-data').style.display = 'block';
+      document.getElementById('step-2').classList.add('done');
+      document.getElementById('step-save').style.display = 'block';
     }
 
     // ========================
