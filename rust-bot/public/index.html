@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rust+ Bot - Setup</title>
+  <title>Rust+ Bot</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -12,7 +12,6 @@
       color: #e0e0e0;
       min-height: 100vh;
     }
-
     .header {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       padding: 30px;
@@ -22,59 +21,63 @@
     .header h1 { font-size: 2em; color: #cd412b; margin-bottom: 5px; }
     .header p { color: #888; }
 
-    .container {
-      max-width: 600px;
-      margin: 30px auto;
-      padding: 0 20px;
-    }
+    .container { max-width: 550px; margin: 30px auto; padding: 0 20px; }
 
-    /* Steps */
-    .steps {
-      display: flex;
-      gap: 20px;
-      margin-bottom: 30px;
-    }
-    .step-tab {
-      flex: 1;
-      text-align: center;
-      padding: 12px;
-      background: #12122a;
-      border: 2px solid #2a2a4a;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-    .step-tab.active { border-color: #cd412b; }
-    .step-tab.done { border-color: #4caf50; }
-    .step-tab .num {
-      display: block;
-      font-size: 1.5em;
-      font-weight: bold;
-      color: #444;
-    }
-    .step-tab.active .num { color: #cd412b; }
-    .step-tab.done .num { color: #4caf50; }
-    .step-tab .label { font-size: 0.85em; color: #888; }
-
-    /* Panel */
-    .panel {
+    .step {
       background: #12122a;
       border: 1px solid #2a2a4a;
       border-radius: 12px;
-      padding: 30px;
-      display: none;
+      padding: 25px;
+      margin-bottom: 20px;
+      transition: border-color 0.3s;
     }
-    .panel.active { display: block; }
-    .panel h2 { color: #cd412b; margin-bottom: 15px; }
+    .step.done { border-color: #4caf50; }
+    .step h2 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-size: 1.2em;
+    }
+    .step h2 .n {
+      background: #cd412b;
+      color: #fff;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85em;
+      flex-shrink: 0;
+    }
+    .step.done h2 .n { background: #4caf50; }
 
-    /* Form */
-    .form-group { margin-bottom: 18px; }
-    .form-group label {
+    .step p { color: #aaa; font-size: 0.9em; margin-bottom: 12px; line-height: 1.5; }
+
+    .btn {
       display: block;
-      margin-bottom: 6px;
-      color: #aaa;
-      font-size: 0.9em;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      color: #fff;
+      transition: all 0.3s;
     }
+    .btn-discord { background: #5865F2; }
+    .btn-discord:hover { background: #6c78ff; }
+    .btn-rust { background: #cd412b; }
+    .btn-rust:hover { background: #e04530; }
+    .btn-save { background: #4caf50; }
+    .btn-save:hover { background: #66bb6a; }
+
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9em; }
     .form-group input {
       width: 100%;
       padding: 12px;
@@ -83,116 +86,48 @@
       border-radius: 8px;
       color: #e0e0e0;
       font-size: 1em;
-      font-family: monospace;
     }
     .form-group input:focus { outline: none; border-color: #cd412b; }
-    .hint {
-      font-size: 0.8em;
-      color: #666;
-      margin-top: 4px;
-    }
-    .hint a { color: #5c7cfa; text-decoration: none; }
 
-    /* Buttons */
-    .btn {
-      padding: 14px 28px;
-      border: none;
-      border-radius: 8px;
-      font-size: 1em;
-      cursor: pointer;
-      font-weight: 600;
-      transition: all 0.3s;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-      justify-content: center;
-    }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: #cd412b; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #e04530; }
-    .btn-steam { background: #171a21; color: #fff; border: 2px solid #2a475e; }
-    .btn-steam:hover:not(:disabled) { background: #2a475e; }
-    .btn-success { background: #4caf50; color: #fff; }
-    .btn-success:hover:not(:disabled) { background: #66bb6a; }
-
-    /* Status */
-    .status-line {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 0;
-      font-size: 0.9em;
-      border-bottom: 1px solid #1a1a35;
-    }
-    .status-line:last-child { border-bottom: none; }
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .dot.pending { background: #444; }
-    .dot.loading { background: #f0ad4e; animation: pulse 1s infinite; }
-    .dot.ok { background: #4caf50; }
-    .dot.fail { background: #f44336; }
-    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-
-    /* Spinner */
-    .spinner {
+    .badge {
       display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-radius: 50%;
-      border-top-color: #fff;
-      animation: spin 0.8s linear infinite;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.75em;
+      font-weight: 600;
+      margin-left: auto;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .badge-wait { background: #2a2a4a; color: #888; }
+    .badge-ok { background: #1a3a1a; color: #4caf50; }
+    .badge-listen { background: #3a3a1a; color: #f0ad4e; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
-    /* Data card */
-    .data-card {
+    .server-info {
       background: #0a0a1a;
       border: 1px solid #2a6a2a;
       border-radius: 8px;
-      padding: 15px;
-      margin: 15px 0;
-    }
-    .data-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 0;
-    }
-    .data-key { color: #888; }
-    .data-value { color: #4caf50; font-family: monospace; font-size: 0.9em; }
-
-    .invite-box {
-      background: #1a1a35;
-      border-radius: 8px;
       padding: 12px;
-      margin-top: 15px;
-      display: none;
-      font-size: 0.85em;
-      word-break: break-all;
+      margin-top: 12px;
     }
-    .invite-box a { color: #5c7cfa; }
+    .srv-row { display: flex; justify-content: space-between; padding: 4px 0; }
+    .srv-k { color: #888; }
+    .srv-v { color: #4caf50; font-family: monospace; font-size: 0.9em; }
 
-    /* Success screen */
-    .success-screen {
+    .done-screen {
       text-align: center;
       padding: 40px 20px;
+      display: none;
     }
-    .success-screen .check { font-size: 4em; color: #4caf50; }
-    .success-screen h2 { margin: 15px 0; }
-    .success-screen .cmd {
+    .done-screen .check { font-size: 4em; color: #4caf50; }
+    .done-screen h2 { margin: 15px 0; }
+    .done-screen .cmd {
       background: #0a0a1a;
       border: 1px solid #333;
       border-radius: 8px;
       padding: 15px;
       font-family: monospace;
       color: #4caf50;
-      margin: 20px 0;
-      font-size: 1.1em;
+      margin: 15px 0;
     }
   </style>
 </head>
@@ -200,272 +135,173 @@
 
   <div class="header">
     <h1>Rust+ Discord Bot</h1>
-    <p>Configuracion rapida</p>
+    <p>Conecta tu servidor de Rust con Discord</p>
+  </div>
+
+  <div class="container" id="setup">
+
+    <!-- PASO 1: Agregar bot a Discord -->
+    <div class="step" id="step-1">
+      <h2>
+        <span class="n">1</span>
+        Agrega el bot a tu Discord
+      </h2>
+      <p>Hace click en el boton para agregar el bot a tu servidor de Discord.</p>
+      <a href="#" id="btn-invite" class="btn btn-discord" target="_blank">Agregar bot a Discord</a>
+    </div>
+
+    <!-- PASO 2: Elegir canal -->
+    <div class="step" id="step-2">
+      <h2>
+        <span class="n">2</span>
+        Elegi el canal de notificaciones
+      </h2>
+      <p>Click derecho en el canal de Discord donde quieras las notificaciones > Copiar ID.<br>
+      (Activa Modo Desarrollador en Discord: Ajustes > Avanzado)</p>
+      <div class="form-group">
+        <input type="text" id="channel-id" placeholder="Pega el ID del canal aqui">
+      </div>
+    </div>
+
+    <!-- PASO 3: Login Rust+ -->
+    <div class="step" id="step-3">
+      <h2>
+        <span class="n">3</span>
+        Inicia sesion en Rust+
+        <span class="badge badge-wait" id="rust-badge">Pendiente</span>
+      </h2>
+      <p>Inicia sesion con tu cuenta de Steam en Rust+.</p>
+      <a href="#" id="btn-rust" class="btn btn-rust" onclick="goRustLogin(event)">Iniciar sesion en Rust+</a>
+
+      <div id="pairing-area" style="display:none; margin-top:15px;">
+        <p style="color:#f0ad4e;">Ahora abre Rust > ESC > Rust+ > <strong>Pair With Server</strong></p>
+        <div id="server-data" style="display:none">
+          <div class="server-info">
+            <div class="srv-row"><span class="srv-k">Servidor</span><span class="srv-v" id="s-name">-</span></div>
+            <div class="srv-row"><span class="srv-k">IP</span><span class="srv-v" id="s-ip">-</span></div>
+            <div class="srv-row"><span class="srv-k">Puerto</span><span class="srv-v" id="s-port">-</span></div>
+            <div class="srv-row"><span class="srv-k">Player ID</span><span class="srv-v" id="s-pid">-</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 4: Guardar -->
+    <div class="step" id="step-save" style="display:none">
+      <button class="btn btn-save" onclick="saveAll()">Guardar y finalizar</button>
+    </div>
+
   </div>
 
   <div class="container">
-    <div class="steps">
-      <div class="step-tab active" id="tab-1" onclick="showStep(1)">
-        <span class="num">1</span>
-        <span class="label">Discord</span>
-      </div>
-      <div class="step-tab" id="tab-2" onclick="showStep(2)">
-        <span class="num">2</span>
-        <span class="label">Rust+</span>
-      </div>
-    </div>
-
-    <!-- ======================== -->
-    <!-- PASO 1: Discord -->
-    <!-- ======================== -->
-    <div class="panel active" id="panel-1">
-      <h2>Datos de Discord</h2>
-
-      <div class="form-group">
-        <label>Bot Token</label>
-        <input type="password" id="discord-token" placeholder="Pega tu token aqui">
-        <p class="hint">
-          Crealo en <a href="https://discord.com/developers/applications" target="_blank">Discord Developer Portal</a> > New App > Bot > Reset Token
-        </p>
-      </div>
-
-      <div class="form-group">
-        <label>Client ID (Application ID)</label>
-        <input type="text" id="discord-client-id" placeholder="Ej: 123456789012345678">
-        <p class="hint">Lo encontras en la seccion General Information de tu app</p>
-      </div>
-
-      <div class="form-group">
-        <label>Channel ID (canal para notificaciones)</label>
-        <input type="text" id="discord-channel-id" placeholder="Click derecho en canal > Copiar ID">
-        <p class="hint">Activa el Modo Desarrollador en Discord: Ajustes > Avanzado</p>
-      </div>
-
-      <div class="invite-box" id="invite-box">
-        Invita el bot a tu servidor: <a id="invite-link" href="#" target="_blank">Abrir link de invitacion</a>
-      </div>
-
-      <br>
-      <button class="btn btn-primary" onclick="nextToRust()">Siguiente - Conectar Rust+</button>
-    </div>
-
-    <!-- ======================== -->
-    <!-- PASO 2: Rust+ -->
-    <!-- ======================== -->
-    <div class="panel" id="panel-2">
-      <h2>Conectar con Rust+</h2>
-
-      <p style="color:#aaa; margin-bottom:20px;">Inicia sesion con Steam y despues hace "Pair with Server" en Rust. Todo lo demas es automatico.</p>
-
-      <!-- Status lines -->
-      <div id="rust-status">
-        <div class="status-line">
-          <span class="dot pending" id="dot-fcm"></span>
-          <span id="text-fcm">Registro Firebase (automatico)</span>
-        </div>
-        <div class="status-line">
-          <span class="dot pending" id="dot-steam"></span>
-          <span id="text-steam">Login con Steam</span>
-        </div>
-        <div class="status-line">
-          <span class="dot pending" id="dot-register"></span>
-          <span id="text-register">Registro en Rust+</span>
-        </div>
-        <div class="status-line">
-          <span class="dot pending" id="dot-pairing"></span>
-          <span id="text-pairing">Esperando pairing del servidor</span>
-        </div>
-      </div>
-
-      <br>
-      <button class="btn btn-steam" id="btn-connect" onclick="startConnection()">Iniciar sesion con Steam</button>
-
-      <!-- Server data (appears after pairing) -->
-      <div id="server-data" style="display:none">
-        <div class="data-card">
-          <div class="data-row">
-            <span class="data-key">Servidor</span>
-            <span class="data-value" id="srv-name">-</span>
-          </div>
-          <div class="data-row">
-            <span class="data-key">IP</span>
-            <span class="data-value" id="srv-ip">-</span>
-          </div>
-          <div class="data-row">
-            <span class="data-key">Puerto</span>
-            <span class="data-value" id="srv-port">-</span>
-          </div>
-          <div class="data-row">
-            <span class="data-key">Player ID</span>
-            <span class="data-value" id="srv-pid">-</span>
-          </div>
-        </div>
-
-        <button class="btn btn-success" onclick="saveAll()">Guardar y finalizar</button>
-      </div>
-
-      <!-- Error retry -->
-      <div id="error-msg" style="display:none; color:#f44; margin-top:15px; font-size:0.9em;"></div>
-    </div>
-
-    <!-- ======================== -->
-    <!-- SUCCESS -->
-    <!-- ======================== -->
-    <div class="panel" id="panel-done">
-      <div class="success-screen">
-        <div class="check">&#10003;</div>
-        <h2>Todo listo!</h2>
-        <p style="color:#aaa">Configuracion guardada. Ahora inicia el bot:</p>
-        <div class="cmd">npm start</div>
-        <p style="color:#666; font-size:0.85em">El bot se conectara a Discord y a tu servidor de Rust automaticamente.</p>
-      </div>
+    <div class="done-screen" id="done-screen">
+      <div class="check">&#10003;</div>
+      <h2>Todo listo!</h2>
+      <p style="color:#aaa">Tu servidor de Rust esta conectado a Discord.</p>
+      <div class="cmd">npm start</div>
+      <p style="color:#555; font-size:0.85em">El bot se conectara automaticamente.</p>
     </div>
   </div>
 
   <script>
     // ========================
-    // Navigation
+    // Cargar info del bot (invite link)
     // ========================
-    function showStep(n) {
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.step-tab').forEach(t => t.classList.remove('active'));
-      document.getElementById(`panel-${n}`).classList.add('active');
-      document.getElementById(`tab-${n}`).classList.add('active');
-    }
+    fetch('/api/bot-info')
+      .then(r => r.json())
+      .then(data => {
+        if (data.inviteUrl) {
+          document.getElementById('btn-invite').href = data.inviteUrl;
+        }
+        if (!data.botConfigured) {
+          document.getElementById('btn-invite').textContent = 'Bot no configurado (contacta al admin)';
+          document.getElementById('btn-invite').style.opacity = '0.5';
+        }
+      });
 
-    function nextToRust() {
-      const token = document.getElementById('discord-token').value.trim();
-      const clientId = document.getElementById('discord-client-id').value.trim();
-      if (!token || !clientId) {
-        alert('Completa al menos el Token y Client ID de Discord.');
+    // ========================
+    // Rust+ login
+    // ========================
+    function goRustLogin(e) {
+      e.preventDefault();
+      const channelId = document.getElementById('channel-id').value.trim();
+      if (!channelId) {
+        alert('Primero pega el ID del canal de Discord.');
         return;
       }
-      document.getElementById('tab-1').classList.add('done');
-      showStep(2);
-    }
-
-    // Auto invite link
-    document.getElementById('discord-client-id').addEventListener('input', function() {
-      const id = this.value.trim();
-      const box = document.getElementById('invite-box');
-      if (id.length > 15) {
-        const url = `https://discord.com/api/oauth2/authorize?client_id=${id}&permissions=2147483648&scope=bot%20applications.commands`;
-        const link = document.getElementById('invite-link');
-        link.href = url;
-        link.textContent = url;
-        box.style.display = 'block';
-      } else {
-        box.style.display = 'none';
-      }
-    });
-
-    // ========================
-    // Rust+ connection flow
-    // ========================
-    function setDot(id, state) {
-      document.getElementById('dot-' + id).className = 'dot ' + state;
-    }
-
-    async function startConnection() {
-      const btn = document.getElementById('btn-connect');
-      btn.disabled = true;
-      document.getElementById('error-msg').style.display = 'none';
-
-      try {
-        // 1. FCM (automatico)
-        setDot('fcm', 'loading');
-        btn.innerHTML = '<span class="spinner"></span> Conectando...';
-
-        const fcmRes = await fetch('/api/fcm-register', { method: 'POST' });
-        const fcmData = await fcmRes.json();
-        if (!fcmData.success) throw new Error('Error en FCM: ' + fcmData.error);
-        setDot('fcm', 'ok');
-
-        // 2. Steam login
-        setDot('steam', 'loading');
-        btn.innerHTML = '<span class="spinner"></span> Abriendo Steam...';
-
-        const authRes = await fetch('/api/steam-auth-url');
-        const authData = await authRes.json();
-        const steamWin = window.open(authData.url, 'steam-login', 'width=800,height=600');
-
-        // Esperar que Steam complete
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Steam login no se completo. Reintenta.'));
-          }, 120000);
-
-          window.addEventListener('message', function handler(event) {
-            if (event.data && event.data.type === 'steam-auth-success') {
-              window.removeEventListener('message', handler);
-              clearTimeout(timeout);
-              resolve();
-            }
-          });
-        });
-
-        setDot('steam', 'ok');
-        setDot('register', 'ok');
-
-        // 3. Escuchar pairing
-        setDot('pairing', 'loading');
-        btn.innerHTML = '<span class="spinner"></span> Esperando pairing...';
-        document.getElementById('text-pairing').textContent = 'Abre Rust > ESC > Rust+ > Pair With Server';
-
-        // Poll hasta que llegue el pairing
-        const pairingData = await new Promise((resolve) => {
-          const interval = setInterval(async () => {
-            const res = await fetch('/api/pairing-status');
-            const data = await res.json();
-            if (data.success) {
-              clearInterval(interval);
-              resolve(data.data);
-            }
-          }, 3000);
-        });
-
-        setDot('pairing', 'ok');
-        document.getElementById('text-pairing').textContent = 'Servidor emparejado!';
-
-        // Mostrar datos del servidor
-        document.getElementById('srv-name').textContent = pairingData.serverName;
-        document.getElementById('srv-ip').textContent = pairingData.serverIp;
-        document.getElementById('srv-port').textContent = pairingData.serverPort;
-        document.getElementById('srv-pid').textContent = pairingData.playerId;
-        document.getElementById('server-data').style.display = 'block';
-        btn.style.display = 'none';
-
-      } catch (err) {
-        document.getElementById('error-msg').textContent = err.message;
-        document.getElementById('error-msg').style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Reintentar';
-      }
+      // Guardar channel ID en localStorage para despues del redirect
+      localStorage.setItem('channelId', channelId);
+      const returnUrl = encodeURIComponent(window.location.origin + '/api/rust-callback');
+      window.location.href = 'https://companion-rust.facepunch.com/login?returnUrl=' + returnUrl;
     }
 
     // ========================
-    // Save
+    // Al cargar: verificar si volvimos del login
+    // ========================
+    const params = new URLSearchParams(window.location.search);
+
+    // Restaurar channel ID despues del redirect
+    const savedChannel = localStorage.getItem('channelId');
+    if (savedChannel) {
+      document.getElementById('channel-id').value = savedChannel;
+    }
+
+    if (params.get('rust') === 'ok') {
+      // Login exitoso, esperando pairing
+      document.getElementById('step-1').classList.add('done');
+      document.getElementById('step-2').classList.add('done');
+      document.getElementById('rust-badge').className = 'badge badge-listen';
+      document.getElementById('rust-badge').textContent = 'Escuchando...';
+      document.getElementById('btn-rust').style.display = 'none';
+      document.getElementById('pairing-area').style.display = 'block';
+
+      // Poll pairing
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch('/api/status');
+          const d = await res.json();
+          if (d.paired && d.pairingData) {
+            clearInterval(poll);
+            document.getElementById('rust-badge').className = 'badge badge-ok';
+            document.getElementById('rust-badge').textContent = 'Conectado!';
+            document.getElementById('s-name').textContent = d.pairingData.serverName;
+            document.getElementById('s-ip').textContent = d.pairingData.serverIp;
+            document.getElementById('s-port').textContent = d.pairingData.serverPort;
+            document.getElementById('s-pid').textContent = d.pairingData.playerId;
+            document.getElementById('server-data').style.display = 'block';
+            document.getElementById('step-3').classList.add('done');
+            document.getElementById('step-save').style.display = 'block';
+          }
+        } catch(e) {}
+      }, 3000);
+
+      window.history.replaceState({}, '', '/');
+    }
+
+    if (params.get('error')) {
+      alert('Error al iniciar sesion en Rust+. Intenta de nuevo.');
+      window.history.replaceState({}, '', '/');
+    }
+
+    // ========================
+    // Guardar
     // ========================
     async function saveAll() {
+      const channelId = document.getElementById('channel-id').value.trim() || localStorage.getItem('channelId');
       try {
         const res = await fetch('/api/save-config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            discordToken: document.getElementById('discord-token').value.trim(),
-            discordClientId: document.getElementById('discord-client-id').value.trim(),
-            discordChannelId: document.getElementById('discord-channel-id').value.trim(),
-          }),
+          body: JSON.stringify({ discordChannelId: channelId }),
         });
-
         const data = await res.json();
         if (data.success) {
-          document.getElementById('tab-2').classList.add('done');
-          document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-          document.getElementById('panel-done').classList.add('active');
+          localStorage.removeItem('channelId');
+          document.getElementById('setup').style.display = 'none';
+          document.getElementById('done-screen').style.display = 'block';
         }
       } catch (err) {
-        alert('Error guardando: ' + err.message);
+        alert('Error: ' + err.message);
       }
     }
   </script>
