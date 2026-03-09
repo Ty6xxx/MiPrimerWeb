@@ -169,6 +169,22 @@ class RustPlusClient extends EventEmitter {
     this.client.sendTeamMessage(message);
   }
 
+  // --- Promote to Team Leader ---
+  async promoteToLeader(steamId) {
+    return new Promise((resolve, reject) => {
+      this.client.sendRequest({
+        promoteToLeader: { steamId: BigInt(steamId) },
+      }, (msg) => {
+        if (msg.response) {
+          resolve(true);
+        } else {
+          reject(new Error('No se pudo cambiar el lider'));
+        }
+        return true;
+      });
+    });
+  }
+
   // --- Event Polling (detectar eventos del mapa) ---
   startEventPolling() {
     this.eventPollTimer = setInterval(async () => {

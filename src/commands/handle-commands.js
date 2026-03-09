@@ -4,6 +4,17 @@ const {
   removeDevice,
   getAllDevices,
 } = require('../handlers/smart-devices');
+const { searchRaidCost } = require('../data/raid-costs');
+const { parseDuration, formatDuration, calculateDistance } = require('../handlers/state');
+
+// Referencia al estado global (se setea desde index.js)
+let botState = null;
+// Trackers: Map<guildId, Map<name, { items: string[], messageId }>>
+const trackers = new Map();
+
+function setBotState(state) {
+  botState = state;
+}
 
 async function handleInteraction(interaction, rustClient) {
   if (!interaction.isChatInputCommand()) return;
@@ -31,9 +42,9 @@ async function handleInteraction(interaction, rustClient) {
         await interaction.deferReply();
         const time = await rustClient.getTime();
         const dayNight =
-          time.time >= 7 && time.time < 19.5 ? 'DIA' : 'NOCHE';
+          time.time >= 7 && time.time < 19.5 ? '☀️ DIA' : '🌙 NOCHE';
         await interaction.editReply(
-          `Hora: **${time.time.toFixed(1)}** (${dayNight}) | Amanecer: ${time.sunrise.toFixed(1)} | Atardecer: ${time.sunset.toFixed(1)}`
+          `⏰ Hora: **${time.time.toFixed(1)}** (${dayNight}) | Amanecer: ${time.sunrise.toFixed(1)} | Atardecer: ${time.sunset.toFixed(1)}`
         );
         break;
       }
@@ -44,7 +55,7 @@ async function handleInteraction(interaction, rustClient) {
         const members = teamInfo.members
           .map(
             (m) =>
-              `- **${m.name}**: ${m.isOnline ? 'Online' : 'Offline'}${m.isAlive ? '' : ' (MUERTO)'}`
+              `${m.isOnline ? '🟢' : '🔴'} **${m.name}**: ${m.isOnline ? 'Online' : 'Offline'}${m.isAlive ? '' : ' 💀'}`
           )
           .join('\n');
         await interaction.editReply(`**Equipo:**\n${members}`);
@@ -55,8 +66,130 @@ async function handleInteraction(interaction, rustClient) {
         await interaction.deferReply();
         const info = await rustClient.getServerInfo();
         await interaction.editReply(
-          `Jugadores: **${info.players}/${info.maxPlayers}** | Cola: ${info.queuedPlayers}`
+          `👥 Jugadores: **${info.players}/${info.maxPlayers}** | Cola: ${info.queuedPlayers}`
         );
+        break;
+      }
+
+      case 'online': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const online = botState.getOnlineMembers();
+        if (online.length === 0) {
+          await interaction.reply('No hay miembros online.');
+        } else {
+          await interaction.reply('🟢 **Online:** ' + online.map(m => m.name).join(', '));
+        }
+        break;
+      }
+
+      case 'offline': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const offline = botState.getOfflineMembers();
+        if (offline.length === 0) {
+          await interaction.reply('Todos estan online!');
+        } else {
+          await interaction.reply('🔴 **Offline:** ' + offline.map(m => m.name).join(', '));
+        }
+        break;
+      }
+
+      case 'afk': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const afkList = botState.getAfkMembers();
+        if (afkList.length === 0) {
+          await interaction.reply('No hay miembros AFK.');
+        } else {
+          await interaction.reply('💤 **AFK:** ' + afkList.map(m => m.name).join(', '));
+        }
+        break;
+      }
+
+      case 'alive': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const longest = botState.getLongestAlive();
+        if (!longest) {
+          await interaction.reply('No hay jugadores vivos online.');
+        } else {
+          const aliveFor = formatDuration(Date.now() - longest.spawnTime);
+          await interaction.reply(`🏆 Mas tiempo vivo: **${longest.name}** (${aliveFor})`);
+        }
+        break;
+      }
+
+      case 'proximity': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        await interaction.deferReply();
+        const positions = botState.getTeamPositions();
+        if (positions.length < 2) {
+          await interaction.editReply('Se necesitan al menos 2 miembros online.');
+          break;
+        }
+        const lines = [];
+        for (let i = 0; i < positions.length; i++) {
+          for (let j = i + 1; j < positions.length; j++) {
+            const a = positions[i];
+            const b = positions[j];
+            const dist = calculateDistance(a.x, a.y, b.x, b.y);
+            lines.push(`📍 **${a.name}** ↔ **${b.name}**: ${Math.round(dist)}m`);
+          }
+        }
+        await interaction.editReply(lines.join('\n'));
+        break;
+      }
+
+      case 'cargo': {
+        await interaction.deferReply();
+        const markers = await rustClient.getMapMarkers();
+        const cargo = markers.find(m => m.type === 5);
+        if (!cargo) {
+          await interaction.editReply('🚢 No hay Cargo Ship en el mapa.');
+        } else {
+          await interaction.editReply(`🚢 **Cargo Ship** en (${Math.round(cargo.x)}, ${Math.round(cargo.y)})`);
+        }
+        break;
+      }
+
+      case 'heli': {
+        await interaction.deferReply();
+        const markers = await rustClient.getMapMarkers();
+        const heli = markers.find(m => m.type === 8);
+        if (!heli) {
+          const explosions = markers.filter(m => m.type === 2);
+          if (explosions.length > 0) {
+            const last = explosions[explosions.length - 1];
+            await interaction.editReply(`🚁 Heli no activo. Ultima explosion en (${Math.round(last.x)}, ${Math.round(last.y)})`);
+          } else {
+            await interaction.editReply('🚁 No hay Patrol Helicopter en el mapa.');
+          }
+        } else {
+          await interaction.editReply(`🚁 **Patrol Helicopter** en (${Math.round(heli.x)}, ${Math.round(heli.y)})`);
+        }
+        break;
+      }
+
+      case 'small': {
+        await interaction.deferReply();
+        const markers = await rustClient.getMapMarkers();
+        const crates = markers.filter(m => m.type === 6);
+        if (crates.length === 0) {
+          await interaction.editReply('⛽ No hay crates activos.');
+        } else {
+          const list = crates.slice(0, 5).map(c => `📦 Crate en (${Math.round(c.x)}, ${Math.round(c.y)})`).join('\n');
+          await interaction.editReply(`⛽ **Small Oil Rig** - Crates: ${crates.length}\n${list}`);
+        }
+        break;
+      }
+
+      case 'large': {
+        await interaction.deferReply();
+        const markers = await rustClient.getMapMarkers();
+        const crates = markers.filter(m => m.type === 6);
+        if (crates.length === 0) {
+          await interaction.editReply('🛢️ No hay crates activos.');
+        } else {
+          const list = crates.slice(0, 5).map(c => `📦 Crate en (${Math.round(c.x)}, ${Math.round(c.y)})`).join('\n');
+          await interaction.editReply(`🛢️ **Large Oil Rig** - Crates: ${crates.length}\n${list}`);
+        }
         break;
       }
 
@@ -105,20 +238,20 @@ async function handleInteraction(interaction, rustClient) {
         break;
       }
 
-      case 'vending': {
+      case 'item': {
         await interaction.deferReply();
-        const itemName = interaction.options.getString('item');
+        const itemName = interaction.options.getString('name');
         const results = await rustClient.searchVending(itemName);
         if (results.length === 0) {
           await interaction.editReply(
-            `No se encontraron vending machines con "${itemName}".`
+            `🏪 No se encontraron vending machines con "${itemName}".`
           );
         } else {
           const list = results
             .slice(0, 10)
             .map(
               (r) =>
-                `- **${r.name}** en (${Math.round(r.location.x)}, ${Math.round(r.location.y)}): ${r.amountInStock}x disponibles`
+                `🏪 **${r.name}** en (${Math.round(r.location.x)}, ${Math.round(r.location.y)}): ${r.amountInStock}x disponibles`
             )
             .join('\n');
           await interaction.editReply(
@@ -128,15 +261,133 @@ async function handleInteraction(interaction, rustClient) {
         break;
       }
 
+      case 'cost': {
+        const name = interaction.options.getString('name');
+        const results = searchRaidCost(name);
+        if (results.length === 0) {
+          await interaction.reply(`No se encontro costo de raid para "${name}".`);
+        } else {
+          const list = results.map(r =>
+            `💣 **${r.name}**\nC4: ${r.c4} | Rockets: ${r.rockets} | Satchels: ${r.satchels} | Explosive Ammo: ${r.expAmmo}`
+          ).join('\n\n');
+          await interaction.reply(list);
+        }
+        break;
+      }
+
+      case 'tracker': {
+        const name = interaction.options.getString('name');
+        const guildId = interaction.guildId;
+        if (!trackers.has(guildId)) trackers.set(guildId, new Map());
+        const guildTrackers = trackers.get(guildId);
+
+        if (guildTrackers.has(name)) {
+          await interaction.reply(`Tracker "${name}" ya existe.`);
+        } else {
+          guildTrackers.set(name, { items: [], createdAt: Date.now() });
+          await interaction.reply(`📋 Tracker **${name}** creado. Usa el team chat para actualizar su estado.`);
+        }
+        break;
+      }
+
       case 'say': {
         const message = interaction.options.getString('message');
         rustClient.sendTeamMessage(message);
-        await interaction.reply(`Mensaje enviado al team chat: "${message}"`);
+        await interaction.reply(`💬 Mensaje enviado: "${message}"`);
+        break;
+      }
+
+      case 'silence': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const timeStr = interaction.options.getString('time');
+        const ms = parseDuration(timeStr);
+        if (ms <= 0) {
+          await interaction.reply('Tiempo invalido. Ej: 2h30m, 5m, 1h');
+          break;
+        }
+        botState.silence(ms);
+        await interaction.reply(`🔇 Bot silenciado por ${formatDuration(ms)}.`);
+        break;
+      }
+
+      case 'resume': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        if (!botState.isSilenced()) {
+          await interaction.reply('El bot no esta silenciado.');
+        } else {
+          botState.resume();
+          await interaction.reply('🔊 Bot activo de nuevo.');
+        }
+        break;
+      }
+
+      case 'alarm': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const timeStr = interaction.options.getString('time');
+        const alarmName = interaction.options.getString('name');
+        const ms = parseDuration(timeStr);
+        if (ms <= 0) {
+          await interaction.reply('Tiempo invalido. Ej: 2h30m, 9m');
+          break;
+        }
+        const id = botState.createAlarm(ms, alarmName, (alarmId, name) => {
+          interaction.channel.send(`⏰ **[ALARMA #${alarmId}]** ${name} - TIEMPO!`);
+          rustClient.sendTeamMessage(`[ALARMA #${alarmId}] ${name} - TIEMPO!`);
+        });
+        await interaction.reply(`⏰ Alarma #${id} **"${alarmName}"** creada (${formatDuration(ms)}).`);
+        break;
+      }
+
+      case 'remain': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const alarms = botState.getAlarms();
+        if (alarms.length === 0) {
+          await interaction.reply('No hay alarmas activas.');
+        } else {
+          const list = alarms.map(a => `⏰ #${a.id} **"${a.name}"**: ${formatDuration(a.remaining)}`).join('\n');
+          await interaction.reply(list);
+        }
+        break;
+      }
+
+      case 'stop': {
+        if (!botState) { await interaction.reply('Bot no inicializado.'); break; }
+        const alarmId = interaction.options.getInteger('id');
+        const stopped = botState.stopAlarm(alarmId);
+        await interaction.reply(stopped
+          ? `⏰ Alarma #${alarmId} detenida.`
+          : `Alarma #${alarmId} no encontrada.`
+        );
+        break;
+      }
+
+      case 'leader': {
+        await interaction.deferReply();
+        const teamInfo = await rustClient.getTeamInfo();
+        const targetName = interaction.options.getString('name');
+
+        if (!targetName) {
+          // Sin nombre = info del lider actual
+          const leader = teamInfo.members.find(m => m.isLeader);
+          if (leader) {
+            await interaction.editReply(`👑 Lider actual: **${leader.name}**`);
+          } else {
+            await interaction.editReply('No se pudo determinar el lider.');
+          }
+        } else {
+          const target = teamInfo.members.find(m => m.name.toLowerCase().includes(targetName.toLowerCase()));
+          if (!target) {
+            await interaction.editReply(`No se encontro a "${targetName}" en el equipo.`);
+          } else {
+            await rustClient.promoteToLeader(target.steamId.toString());
+            await interaction.editReply(`👑 **${target.name}** ahora es el lider del equipo.`);
+          }
+        }
         break;
       }
     }
   } catch (err) {
-    const reply = `Error: ${err.message}`;
+    const reply = `❌ Error: ${err.message}`;
     if (interaction.deferred) {
       await interaction.editReply(reply);
     } else {
@@ -145,4 +396,4 @@ async function handleInteraction(interaction, rustClient) {
   }
 }
 
-module.exports = { handleInteraction };
+module.exports = { handleInteraction, setBotState };
