@@ -237,13 +237,13 @@
           if (d.paired && d.pairingData) {
             clearInterval(poll);
             document.getElementById('rust-badge').className = 'badge badge-ok';
-            document.getElementById('rust-badge').textContent = 'Conectado!';
+            document.getElementById('rust-badge').textContent = 'Recibido';
             document.getElementById('s-name').textContent = d.pairingData.serverName;
             document.getElementById('s-ip').textContent = d.pairingData.serverIp;
             document.getElementById('s-port').textContent = d.pairingData.serverPort;
             document.getElementById('s-pid').textContent = d.pairingData.playerId;
             document.getElementById('server-data').style.display = 'block';
-            document.getElementById('step-3').classList.add('done');
+            document.getElementById('step-2').classList.add('done');
             document.getElementById('step-save').style.display = 'block';
           }
         } catch(e) {}
