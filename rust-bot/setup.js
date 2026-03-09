@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Estado global del proceso de registro
+// Estado global
 const state = {
   fcmCredentials: null,
   expoPushToken: null,
@@ -32,12 +32,11 @@ const RUST_COMPANION = {
 // API Endpoints
 // ========================
 
-// Paso 1: Registrar con FCM (Firebase Cloud Messaging)
+// Paso automatico: Registrar FCM + obtener Expo token (se llama automaticamente)
 app.post('/api/fcm-register', async (req, res) => {
   try {
     console.log('[Setup] Registrando con FCM...');
 
-    // Registrar con Firebase/GCM
     const fcmCredentials = await registerFCM({
       apiKey: RUST_COMPANION.apiKey,
       projectId: RUST_COMPANION.projectId,
@@ -48,9 +47,8 @@ app.post('/api/fcm-register', async (req, res) => {
     });
 
     state.fcmCredentials = fcmCredentials;
-    console.log('[Setup] FCM registrado exitosamente');
+    console.log('[Setup] FCM registrado');
 
-    // Obtener Expo Push Token
     const expoPushTokenResponse = await fetch(
       'https://exp.host/--/api/v2/push/getExpoPushToken',
       {
@@ -70,179 +68,123 @@ app.post('/api/fcm-register', async (req, res) => {
 
     const expoPushTokenData = await expoPushTokenResponse.json();
     state.expoPushToken = expoPushTokenData.data.expoPushToken;
-    console.log('[Setup] Expo Push Token:', state.expoPushToken);
+    console.log('[Setup] Expo Push Token obtenido');
 
-    res.json({
-      success: true,
-      message: 'FCM registrado. Ahora necesitas iniciar sesion con Steam.',
-    });
+    res.json({ success: true });
   } catch (err) {
     console.error('[Setup] Error en FCM:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Paso 2: Obtener URL de login de Steam
+// URL de login de Steam
 app.get('/api/steam-auth-url', (req, res) => {
-  // La URL de autenticacion de Rust+ Companion
   const steamAuthUrl =
     'https://companion-rust.facepunch.com/login?returnUrl=' +
     encodeURIComponent(`http://localhost:3000/api/steam-callback`);
-
   res.json({ url: steamAuthUrl });
 });
 
-// Callback de Steam
-app.get('/api/steam-callback', (req, res) => {
+// Callback de Steam - recibe token y automaticamente registra + escucha pairing
+app.get('/api/steam-callback', async (req, res) => {
   const token = req.query.token;
 
-  if (token) {
-    state.rustplusAuthToken = token;
-    console.log('[Setup] Steam Auth Token recibido');
-
-    // Mostrar pagina de exito que cierra la ventana
-    res.send(`
-      <!DOCTYPE html>
-      <html><body style="background:#1a1a2e;color:#0f0;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-        <div style="text-align:center">
-          <h1>Steam Vinculado!</h1>
-          <p>Puedes cerrar esta ventana.</p>
-          <script>
-            if(window.opener) { window.opener.postMessage({type:'steam-auth-success'},'*'); }
-            setTimeout(()=>window.close(), 2000);
-          </script>
-        </div>
-      </body></html>
-    `);
-  } else {
-    res.status(400).send('No se recibio token de Steam.');
+  if (!token) {
+    return res.status(400).send('No se recibio token de Steam.');
   }
-});
 
-// Paso 3: Registrar con Rust Companion API
-app.post('/api/rust-register', async (req, res) => {
+  state.rustplusAuthToken = token;
+  console.log('[Setup] Steam Auth Token recibido');
+
+  // Auto-registrar con Rust Companion API
   try {
-    if (!state.expoPushToken || !state.rustplusAuthToken) {
-      return res.status(400).json({
-        success: false,
-        error: 'Primero completa FCM y Steam.',
-      });
-    }
-
-    console.log('[Setup] Registrando con Rust Companion API...');
-
-    const deviceId = 'rustbot-' + Date.now();
-
-    const response = await fetch(
-      'https://companion-rust.facepunch.com:443/api/push/register',
-      {
+    if (state.expoPushToken) {
+      const deviceId = 'rustbot-' + Date.now();
+      await fetch('https://companion-rust.facepunch.com:443/api/push/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${state.rustplusAuthToken}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          AuthToken: state.rustplusAuthToken,
+          AuthToken: token,
           DeviceId: deviceId,
-          PushKind: 3, // Expo
+          PushKind: 3,
           PushToken: state.expoPushToken,
         }),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Rust API respondio con ${response.status}`);
+      });
+      console.log('[Setup] Registrado con Rust Companion API');
     }
-
-    console.log('[Setup] Registrado con Rust Companion API');
-
-    res.json({
-      success: true,
-      message:
-        'Registrado! Ahora ve al juego Rust y haz "Pair with Server" en el menu Rust+.',
-    });
   } catch (err) {
-    console.error('[Setup] Error registrando:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[Setup] Error registrando con Rust API:', err);
   }
-});
 
-// Paso 4: Escuchar notificaciones de pairing
-app.post('/api/start-listening', async (req, res) => {
+  // Auto-iniciar escucha de pairing
   try {
-    if (!state.fcmCredentials) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'Primero registra con FCM.' });
-    }
+    if (state.fcmCredentials) {
+      if (state.pushClient) state.pushClient.destroy();
 
-    if (state.pushClient) {
-      state.pushClient.destroy();
-    }
+      state.pushClient = new PushReceiverClient(
+        state.fcmCredentials,
+        state.fcmCredentials.fcm.persistentIds || []
+      );
 
-    console.log('[Setup] Escuchando notificaciones de pairing...');
-
-    state.pushClient = new PushReceiverClient(
-      state.fcmCredentials,
-      state.fcmCredentials.fcm.persistentIds || []
-    );
-
-    state.pushClient.on('ON_NOTIFICATION_RECEIVED', (notification) => {
-      console.log('[Setup] Notificacion recibida!');
-
-      try {
-        if (notification.data && notification.data.body) {
-          const body = JSON.parse(notification.data.body);
-
-          if (body.ip && body.port && body.playerId && body.playerToken) {
-            state.pairingData = {
-              serverIp: body.ip,
-              serverPort: body.port.toString(),
-              playerId: body.playerId.toString(),
-              playerToken: body.playerToken.toString(),
-              serverName: body.name || 'Unknown Server',
-              serverDesc: body.desc || '',
-            };
-            console.log('[Setup] Datos de pairing recibidos:', {
-              server: state.pairingData.serverName,
-              ip: state.pairingData.serverIp,
-              port: state.pairingData.serverPort,
-            });
+      state.pushClient.on('ON_NOTIFICATION_RECEIVED', (notification) => {
+        try {
+          if (notification.data && notification.data.body) {
+            const body = JSON.parse(notification.data.body);
+            if (body.ip && body.port && body.playerId && body.playerToken) {
+              state.pairingData = {
+                serverIp: body.ip,
+                serverPort: body.port.toString(),
+                playerId: body.playerId.toString(),
+                playerToken: body.playerToken.toString(),
+                serverName: body.name || 'Unknown Server',
+              };
+              console.log('[Setup] Pairing recibido:', state.pairingData.serverName);
+            }
           }
+        } catch (e) {
+          console.error('[Setup] Error parseando notificacion:', e);
         }
-      } catch (parseErr) {
-        console.error('[Setup] Error parseando notificacion:', parseErr);
-      }
-    });
+      });
 
-    await state.pushClient.connect();
-    console.log('[Setup] Conectado a FCM, esperando pairing...');
-
-    res.json({
-      success: true,
-      message:
-        'Escuchando... Ve al juego Rust y haz click en "Pair with Server".',
-    });
+      await state.pushClient.connect();
+      console.log('[Setup] Escuchando pairing...');
+    }
   } catch (err) {
-    console.error('[Setup] Error escuchando:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[Setup] Error iniciando escucha:', err);
   }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html><body style="background:#1a1a2e;color:#0f0;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+      <div style="text-align:center">
+        <h1>Steam Vinculado!</h1>
+        <p>Puedes cerrar esta ventana.</p>
+        <script>
+          if(window.opener) { window.opener.postMessage({type:'steam-auth-success'},'*'); }
+          setTimeout(()=>window.close(), 2000);
+        </script>
+      </div>
+    </body></html>
+  `);
 });
 
-// Polling para verificar si se recibio pairing
+// Polling de pairing
 app.get('/api/pairing-status', (req, res) => {
   if (state.pairingData) {
     res.json({ success: true, data: state.pairingData });
   } else {
-    res.json({ success: false, message: 'Esperando pairing...' });
+    res.json({ success: false });
   }
 });
 
-// Paso final: Guardar configuracion en .env
+// Guardar configuracion
 app.post('/api/save-config', (req, res) => {
   try {
-    const { discordToken, discordClientId, discordChannelId } = req.body;
-    const rust = state.pairingData || req.body.rust || {};
+    const { discordToken, discordClientId, discordChannelId, rust } = req.body;
+    const rustData = state.pairingData || rust || {};
 
     const envContent = [
       '# Discord Bot Configuration',
@@ -251,43 +193,25 @@ app.post('/api/save-config', (req, res) => {
       `DISCORD_CHANNEL_ID=${discordChannelId || ''}`,
       '',
       '# Rust+ Server Configuration',
-      `RUST_SERVER_IP=${rust.serverIp || ''}`,
-      `RUST_SERVER_PORT=${rust.serverPort || ''}`,
-      `RUST_PLAYER_ID=${rust.playerId || ''}`,
-      `RUST_PLAYER_TOKEN=${rust.playerToken || ''}`,
+      `RUST_SERVER_IP=${rustData.serverIp || ''}`,
+      `RUST_SERVER_PORT=${rustData.serverPort || ''}`,
+      `RUST_PLAYER_ID=${rustData.playerId || ''}`,
+      `RUST_PLAYER_TOKEN=${rustData.playerToken || ''}`,
     ].join('\n');
 
-    const envPath = path.join(__dirname, '.env');
-    fs.writeFileSync(envPath, envContent);
+    fs.writeFileSync(path.join(__dirname, '.env'), envContent);
     console.log('[Setup] Configuracion guardada en .env');
 
-    // Limpiar estado
     if (state.pushClient) {
       state.pushClient.destroy();
       state.pushClient = null;
     }
 
-    res.json({
-      success: true,
-      message: 'Configuracion guardada! Ya puedes iniciar el bot con: npm start',
-    });
+    res.json({ success: true });
   } catch (err) {
     console.error('[Setup] Error guardando:', err);
     res.status(500).json({ success: false, error: err.message });
   }
-});
-
-// Reset
-app.post('/api/reset', (req, res) => {
-  state.fcmCredentials = null;
-  state.expoPushToken = null;
-  state.rustplusAuthToken = null;
-  state.pairingData = null;
-  if (state.pushClient) {
-    state.pushClient.destroy();
-    state.pushClient = null;
-  }
-  res.json({ success: true });
 });
 
 // ========================
