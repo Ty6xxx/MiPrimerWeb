@@ -202,16 +202,12 @@ app.get('/api/rust-callback', async (req, res) => {
 // Guardar config final del cliente
 app.post('/api/save-config', (req, res) => {
   try {
-    const { discordChannelId } = req.body;
     const rustData = state.pairingData || {};
 
     const envContent = [
       '# Discord Bot Configuration (developer)',
       `DISCORD_TOKEN=${botConfig.discordToken || ''}`,
       `DISCORD_CLIENT_ID=${botConfig.discordClientId || ''}`,
-      '',
-      '# Discord Channel (cliente)',
-      `DISCORD_CHANNEL_ID=${discordChannelId || ''}`,
       '',
       '# Rust+ Server Configuration',
       `RUST_SERVER_IP=${rustData.serverIp || ''}`,

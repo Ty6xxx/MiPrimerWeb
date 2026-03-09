@@ -4,7 +4,6 @@ module.exports = {
   discord: {
     token: process.env.DISCORD_TOKEN,
     clientId: process.env.DISCORD_CLIENT_ID,
-    channelId: process.env.DISCORD_CHANNEL_ID,
   },
   rust: {
     serverIp: process.env.RUST_SERVER_IP,

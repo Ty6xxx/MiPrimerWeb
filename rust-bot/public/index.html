@@ -150,23 +150,10 @@
       <a href="#" id="btn-invite" class="btn btn-discord" target="_blank">Agregar bot a Discord</a>
     </div>
 
-    <!-- PASO 2: Elegir canal -->
+    <!-- PASO 2: Login Rust+ -->
     <div class="step" id="step-2">
       <h2>
         <span class="n">2</span>
-        Elegi el canal de notificaciones
-      </h2>
-      <p>Click derecho en el canal de Discord donde quieras las notificaciones > Copiar ID.<br>
-      (Activa Modo Desarrollador en Discord: Ajustes > Avanzado)</p>
-      <div class="form-group">
-        <input type="text" id="channel-id" placeholder="Pega el ID del canal aqui">
-      </div>
-    </div>
-
-    <!-- PASO 3: Login Rust+ -->
-    <div class="step" id="step-3">
-      <h2>
-        <span class="n">3</span>
         Inicia sesion en Rust+
         <span class="badge badge-wait" id="rust-badge">Pendiente</span>
       </h2>
@@ -186,7 +173,7 @@
       </div>
     </div>
 
-    <!-- PASO 4: Guardar -->
+    <!-- PASO 3: Guardar -->
     <div class="step" id="step-save" style="display:none">
       <button class="btn btn-save" onclick="saveAll()">Guardar y finalizar</button>
     </div>
@@ -224,13 +211,6 @@
     // ========================
     function goRustLogin(e) {
       e.preventDefault();
-      const channelId = document.getElementById('channel-id').value.trim();
-      if (!channelId) {
-        alert('Primero pega el ID del canal de Discord.');
-        return;
-      }
-      // Guardar channel ID en localStorage para despues del redirect
-      localStorage.setItem('channelId', channelId);
       const returnUrl = encodeURIComponent(window.location.origin + '/api/rust-callback');
       window.location.href = 'https://companion-rust.facepunch.com/login?returnUrl=' + returnUrl;
     }
@@ -239,12 +219,6 @@
     // Al cargar: verificar si volvimos del login
     // ========================
     const params = new URLSearchParams(window.location.search);
-
-    // Restaurar channel ID despues del redirect
-    const savedChannel = localStorage.getItem('channelId');
-    if (savedChannel) {
-      document.getElementById('channel-id').value = savedChannel;
-    }
 
     if (params.get('rust') === 'ok') {
       // Login exitoso, esperando pairing
@@ -287,16 +261,14 @@
     // Guardar
     // ========================
     async function saveAll() {
-      const channelId = document.getElementById('channel-id').value.trim() || localStorage.getItem('channelId');
       try {
         const res = await fetch('/api/save-config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ discordChannelId: channelId }),
+          body: JSON.stringify({}),
         });
         const data = await res.json();
         if (data.success) {
-          localStorage.removeItem('channelId');
           document.getElementById('setup').style.display = 'none';
           document.getElementById('done-screen').style.display = 'block';
         }
