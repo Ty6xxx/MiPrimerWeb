@@ -123,6 +123,9 @@ async function startFcmListener() {
       console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
       console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
       console.log('[Setup] PlayerID:', state.pairingData.playerId);
+
+      // Auto-guardar .env y arrancar el bot
+      autoSaveAndStart();
     }
   });
 
@@ -176,7 +179,58 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// Guardar config final del cliente
+// Auto-guardar .env despues de pairing exitoso y arrancar el bot
+function autoSaveAndStart() {
+  const rustData = state.pairingData;
+  if (!rustData) return;
+
+  // Leer .env existente o crear nuevo
+  const envPath = path.join(__dirname, '.env');
+  let envContent = '';
+  if (fs.existsSync(envPath)) {
+    envContent = fs.readFileSync(envPath, 'utf-8');
+  }
+
+  // Actualizar o agregar las variables de Rust+
+  const rustVars = {
+    RUST_SERVER_IP: rustData.serverIp,
+    RUST_SERVER_PORT: rustData.serverPort,
+    RUST_PLAYER_ID: rustData.playerId,
+    RUST_PLAYER_TOKEN: rustData.playerToken,
+  };
+
+  for (const [key, value] of Object.entries(rustVars)) {
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    if (regex.test(envContent)) {
+      envContent = envContent.replace(regex, `${key}=${value}`);
+    } else {
+      envContent += `\n${key}=${value}`;
+    }
+  }
+
+  fs.writeFileSync(envPath, envContent.trim() + '\n');
+  console.log('[Setup] Datos guardados en .env');
+
+  // Destruir push client
+  if (state.pushClient) {
+    state.pushClient.destroy();
+    state.pushClient = null;
+  }
+
+  // Recargar env y arrancar el bot
+  console.log('[Setup] Arrancando el bot...\n');
+  require('dotenv').config({ override: true });
+
+  // Importar startBot del index (lazy require para evitar circular)
+  const { spawn } = require('child_process');
+  const child = spawn(process.argv[0], [path.join(__dirname, 'index.js')], {
+    stdio: 'inherit',
+    env: { ...process.env, ...rustVars },
+  });
+  child.on('exit', (code) => process.exit(code));
+}
+
+// Guardar config final del cliente (desde la web)
 app.post('/api/save-config', (req, res) => {
   try {
     const rustData = state.pairingData || {};

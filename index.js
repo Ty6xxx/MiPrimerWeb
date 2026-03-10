@@ -1,153 +1,40 @@
-const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
-const RustPlusClient = require('./src/rustplus-client');
-const { registerCommands } = require('./src/commands/register-commands');
-const { handleInteraction, setBotState: setHandlerState } = require('./src/commands/handle-commands');
-const { handleTeamMessage, setBotState: setChatState } = require('./src/handlers/team-chat');
-const { formatEventMessage, formatEventEndMessage, formatTeamChangeEmbed } = require('./src/handlers/events');
-const { BotState } = require('./src/handlers/state');
-const config = require('./src/config');
 const fs = require('fs');
 const path = require('path');
-const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
+require('dotenv').config();
 
 // ========================
-// Verificar si necesitamos pairing
+// Verificar si el .env tiene datos reales de Rust+
 // ========================
-const needsPairing = !config.rust.serverIp || !config.rust.serverPort ||
-  !config.rust.playerId || !config.rust.playerToken;
-
-if (needsPairing) {
-  console.log('[Bot] Faltan datos de Rust+ en .env. Iniciando modo pairing...');
-  startPairingMode();
-} else {
-  startBot();
+function hasValidRustConfig() {
+  const { RUST_SERVER_IP, RUST_SERVER_PORT, RUST_PLAYER_ID, RUST_PLAYER_TOKEN } = process.env;
+  // Verificar que existan y no sean placeholders
+  if (!RUST_SERVER_IP || !RUST_SERVER_PORT || !RUST_PLAYER_ID || !RUST_PLAYER_TOKEN) return false;
+  if (RUST_SERVER_IP.includes('tu_') || RUST_SERVER_PORT.includes('tu_')) return false;
+  if (RUST_PLAYER_ID.includes('tu_') || RUST_PLAYER_TOKEN.includes('tu_')) return false;
+  return true;
 }
 
-// ========================
-// Modo Pairing: escucha FCM y espera pair del juego
-// ========================
-async function startPairingMode() {
-  const rustplusConfigPath = path.join(__dirname, 'rustplus.config.json');
-
-  if (!fs.existsSync(rustplusConfigPath)) {
-    console.log('\n============================================');
-    console.log('  CONFIGURACION INICIAL NECESARIA');
-    console.log('============================================');
-    console.log('');
-    console.log('1. Ejecuta: npx @liamcottle/rustplus.js fcm-register');
-    console.log('   (Esto abre el navegador para login Steam y genera rustplus.config.json)');
-    console.log('');
-    console.log('2. Coloca el archivo rustplus.config.json en esta carpeta');
-    console.log('');
-    console.log('3. Vuelve a ejecutar: node index.js');
-    console.log('');
-    if (!config.discord.token || !config.discord.clientId) {
-      console.log('4. Tambien necesitas crear un .env con:');
-      console.log('   DISCORD_TOKEN=tu_token_de_bot');
-      console.log('   DISCORD_CLIENT_ID=tu_client_id');
-      console.log('');
-    }
-    console.log('============================================\n');
-    return;
-  }
-
-  // Cargar credenciales FCM
-  const rustPlusConfig = JSON.parse(fs.readFileSync(rustplusConfigPath, 'utf-8'));
-  if (!rustPlusConfig.fcm_credentials) {
-    console.log('[Pairing] ERROR: fcm_credentials no encontrado. Regenera rustplus.config.json.');
-    return;
-  }
-
-  const creds = rustPlusConfig.fcm_credentials;
-  const androidId = (creds.gcm.android_id || creds.gcm.androidId || '').toString();
-  const securityToken = (creds.gcm.security_token || creds.gcm.securityToken || '').toString();
-
-  if (!androidId || !securityToken) {
-    console.log('[Pairing] ERROR: Credenciales FCM invalidas. Regenera rustplus.config.json.');
-    return;
-  }
-
-  console.log('[Pairing] FCM credentials OK');
-  console.log('[Pairing] Conectando a FCM...');
-
-  const pushClient = new PushReceiverClient(androidId, securityToken, []);
-
-  pushClient.on('ON_DATA_RECEIVED', (data) => {
-    const appData = data.appData;
-    if (!appData) return;
-
-    const channelId = appData.find(item => item.key === 'channelId')?.value;
-    const title = appData.find(item => item.key === 'title')?.value;
-    const bodyCheck = appData.find(item => item.key === 'body');
-
-    if (channelId !== 'pairing' || !bodyCheck) return;
-
-    const body = JSON.parse(bodyCheck.value);
-
-    if (body.ip && body.port && body.playerId && body.playerToken) {
-      console.log(`[Pairing] EXITOSO! Servidor: ${title || body.name}`);
-      console.log(`[Pairing] IP: ${body.ip} Puerto: ${body.port}`);
-      console.log(`[Pairing] PlayerID: ${body.playerId}`);
-
-      // Leer .env existente o crear nuevo
-      const envPath = path.join(__dirname, '.env');
-      let envContent = '';
-      if (fs.existsSync(envPath)) {
-        envContent = fs.readFileSync(envPath, 'utf-8');
-      }
-
-      // Actualizar o agregar las variables de Rust+
-      const rustVars = {
-        RUST_SERVER_IP: body.ip,
-        RUST_SERVER_PORT: body.port.toString(),
-        RUST_PLAYER_ID: body.playerId.toString(),
-        RUST_PLAYER_TOKEN: body.playerToken.toString(),
-      };
-
-      for (const [key, value] of Object.entries(rustVars)) {
-        const regex = new RegExp(`^${key}=.*$`, 'm');
-        if (regex.test(envContent)) {
-          envContent = envContent.replace(regex, `${key}=${value}`);
-        } else {
-          envContent += `\n${key}=${value}`;
-        }
-      }
-
-      fs.writeFileSync(envPath, envContent.trim() + '\n');
-      console.log('[Pairing] Datos guardados en .env');
-
-      // Destruir listener y arrancar el bot
-      pushClient.destroy();
-      console.log('[Pairing] Reiniciando como bot...\n');
-
-      // Recargar config
-      require('dotenv').config({ override: true });
-      config.rust.serverIp = body.ip;
-      config.rust.serverPort = body.port.toString();
-      config.rust.playerId = body.playerId.toString();
-      config.rust.playerToken = body.playerToken.toString();
-
-      startBot();
-    }
-  });
-
-  await pushClient.connect();
-
-  console.log('\n============================================');
-  console.log('  MODO PAIRING ACTIVO');
-  console.log('============================================');
-  console.log('');
-  console.log('Entra al servidor de Rust y presiona');
-  console.log('"PAIR WITH SERVER" en el menu de Rust+');
-  console.log('');
-  console.log('El bot arrancara automaticamente despues.');
-  console.log('============================================\n');
+if (!hasValidRustConfig()) {
+  console.log('[Bot] Faltan datos de Rust+ en .env. Iniciando setup...\n');
+  // Ejecutar setup.js
+  require('./setup');
+} else {
+  startBot();
 }
 
 // ========================
 // Bot Principal
 // ========================
 function startBot() {
+  const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
+  const RustPlusClient = require('./src/rustplus-client');
+  const { registerCommands } = require('./src/commands/register-commands');
+  const { handleInteraction, setBotState: setHandlerState } = require('./src/commands/handle-commands');
+  const { handleTeamMessage, setBotState: setChatState } = require('./src/handlers/team-chat');
+  const { formatEventMessage, formatEventEndMessage, formatTeamChangeEmbed } = require('./src/handlers/events');
+  const { BotState } = require('./src/handlers/state');
+  const config = require('./src/config');
+
   if (!config.discord.token) {
     console.log('[Bot] ERROR: DISCORD_TOKEN no configurado en .env');
     return;
@@ -269,7 +156,6 @@ function startBot() {
   // Iniciar Discord
   discord.login(config.discord.token);
 
-  // Manejo de errores globales
   process.on('unhandledRejection', (err) => {
     console.error('[Bot] Error no manejado:', err);
   });
