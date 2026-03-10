@@ -47,10 +47,27 @@ function loadFcmCredentials() {
     return false;
   }
 
-  state.fcmCredentials = rustPlusConfig.fcm_credentials;
+  const creds = rustPlusConfig.fcm_credentials;
+
+  // Soportar ambos formatos: snake_case (android_id) y camelCase (androidId)
+  const androidId = creds.gcm.android_id || creds.gcm.androidId;
+  const securityToken = creds.gcm.security_token || creds.gcm.securityToken;
+
+  if (!androidId || !securityToken) {
+    console.log('[Setup] ERROR: android_id o security_token no encontrados en fcm_credentials');
+    console.log('[Setup] Contenido de gcm:', JSON.stringify(creds.gcm).substring(0, 200));
+    return false;
+  }
+
+  // Normalizar al formato que espera PushReceiverClient
+  state.fcmCredentials = {
+    androidId: androidId.toString(),
+    securityToken: securityToken.toString(),
+  };
+
   console.log('[Setup] FCM credentials cargadas OK');
-  console.log('[Setup] android_id:', state.fcmCredentials.gcm.android_id ? 'OK' : 'FALTA');
-  console.log('[Setup] security_token:', state.fcmCredentials.gcm.security_token ? 'OK' : 'FALTA');
+  console.log('[Setup] androidId:', state.fcmCredentials.androidId ? 'OK' : 'FALTA');
+  console.log('[Setup] securityToken:', state.fcmCredentials.securityToken ? 'OK' : 'FALTA');
   state.ready = true;
   return true;
 }
@@ -62,8 +79,8 @@ async function startFcmListener() {
   if (!state.fcmCredentials) return;
   if (state.pushClient) state.pushClient.destroy();
 
-  const androidId = state.fcmCredentials.gcm.android_id;
-  const securityToken = state.fcmCredentials.gcm.security_token;
+  const androidId = state.fcmCredentials.androidId;
+  const securityToken = state.fcmCredentials.securityToken;
 
   state.pushClient = new PushReceiverClient(androidId, securityToken, []);
 
