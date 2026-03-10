@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const AndroidFCM = require('@liamcottle/push-receiver/src/android/fcm');
-const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
+const { listen } = require('@liamcottle/push-receiver');
 
 const app = express();
 app.use(express.json());
@@ -183,75 +183,49 @@ app.get('/api/rust-callback', async (req, res) => {
     console.error('[Setup] Error registrando push:', err.message);
   }
 
-  // Iniciar escucha de pairing
+  // Iniciar escucha de pairing (mismo patron que RustPlus-Discord-Bot)
   try {
     if (state.fcmCredentials) {
       if (state.pushClient) state.pushClient.destroy();
 
-      // Client necesita: androidId, securityToken, persistentIds
-      await PushReceiverClient.init();
-      state.pushClient = new PushReceiverClient(
+      state.pushClient = await listen(
         state.fcmCredentials.gcm.androidId,
         state.fcmCredentials.gcm.securityToken,
-        []
+        [],
+        ({ notification, persistentId }) => {
+          console.log('[Setup] Notificacion recibida!');
+          console.log('[Setup] Data:', JSON.stringify(notification).substring(0, 500));
+
+          const data = notification.data;
+          if (!data || !data.body) {
+            console.log('[Setup] Notificacion sin body, ignorando');
+            return;
+          }
+
+          // Filtrar solo notificaciones de pairing
+          if (data.channelId !== 'pairing') {
+            console.log('[Setup] channelId:', data.channelId, '(no es pairing, ignorando)');
+            return;
+          }
+
+          const body = JSON.parse(data.body);
+          console.log('[Setup] Body:', JSON.stringify(body).substring(0, 300));
+
+          if (body.ip && body.port && body.playerId && body.playerToken) {
+            state.pairingData = {
+              serverIp: body.ip,
+              serverPort: body.port.toString(),
+              playerId: body.playerId.toString(),
+              playerToken: body.playerToken.toString(),
+              serverName: body.name || body.desc || 'Unknown Server',
+            };
+            console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
+            console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
+          }
+        }
       );
-
-      // Funcion para procesar datos de pairing
-      function processPairingData(data) {
-        try {
-          let body = null;
-
-          if (typeof data === 'string') {
-            body = JSON.parse(data);
-          } else if (data && data.body) {
-            body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
-          } else if (data && data.ip) {
-            body = data;
-          }
-
-          if (body) {
-            console.log('[Setup] Body parseado:', JSON.stringify(body).substring(0, 300));
-            if (body.ip && body.port && body.playerId && body.playerToken) {
-              state.pairingData = {
-                serverIp: body.ip,
-                serverPort: body.port.toString(),
-                playerId: body.playerId.toString(),
-                playerToken: body.playerToken.toString(),
-                serverName: body.name || body.desc || 'Unknown Server',
-              };
-              console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
-              console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
-            }
-          }
-        } catch (e) {
-          console.error('[Setup] Error parseando:', e.message);
-        }
-      }
-
-      // Notificaciones encriptadas (push notifications)
-      state.pushClient.on('ON_NOTIFICATION_RECEIVED', ({ notification, persistentId }) => {
-        console.log('[Setup] Notificacion recibida:', JSON.stringify(notification).substring(0, 300));
-        if (notification && notification.data) {
-          processPairingData(notification.data);
-        }
-      });
-
-      // Mensajes de datos no encriptados
-      state.pushClient.on('ON_DATA_RECEIVED', (data) => {
-        console.log('[Setup] Data recibida:', JSON.stringify(data).substring(0, 300));
-        // Buscar en appData
-        if (data && data.appData) {
-          const appDataObj = {};
-          for (const item of data.appData) {
-            appDataObj[item.key] = item.value;
-          }
-          console.log('[Setup] AppData:', JSON.stringify(appDataObj).substring(0, 300));
-          processPairingData(appDataObj);
-        }
-      });
-
-      await state.pushClient.connect();
       console.log('[Setup] Push client conectado, escuchando pairing...');
+      console.log('[Setup] Ahora ve al servidor de Rust y presiona "PAIR WITH SERVER" en Rust+');
     }
   } catch (err) {
     console.error('[Setup] Error iniciando escucha:', err);
