@@ -46,14 +46,14 @@ const RUST_COMPANION = {
 async function initFCM() {
   try {
     console.log('[Setup] Registrando con FCM...');
-    state.fcmCredentials = await AndroidFCM.register({
-      apiKey: RUST_COMPANION.apiKey,
-      projectId: RUST_COMPANION.projectId,
-      gcmSenderId: RUST_COMPANION.gcmSenderId,
-      gmsAppId: RUST_COMPANION.gmsAppId,
-      androidPackageName: RUST_COMPANION.androidPackageName,
-      androidPackageCert: RUST_COMPANION.androidPackageCert,
-    });
+    state.fcmCredentials = await AndroidFCM.register(
+      RUST_COMPANION.apiKey,
+      RUST_COMPANION.projectId,
+      RUST_COMPANION.gcmSenderId,
+      RUST_COMPANION.gmsAppId,
+      RUST_COMPANION.androidPackageName,
+      RUST_COMPANION.androidPackageCert,
+    );
     console.log('[Setup] FCM registrado OK');
     console.log('[Setup] GCM androidId:', state.fcmCredentials.gcm.androidId ? 'OK' : 'FALTA');
     console.log('[Setup] FCM token:', state.fcmCredentials.fcm.token ? 'OK' : 'FALTA');
