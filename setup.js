@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const AndroidFCM = require('@liamcottle/push-receiver/src/android/fcm');
-const { listen } = require('@liamcottle/push-receiver');
+const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
 
 const app = express();
 app.use(express.json());
@@ -183,47 +183,59 @@ app.get('/api/rust-callback', async (req, res) => {
     console.error('[Setup] Error registrando push:', err.message);
   }
 
-  // Iniciar escucha de pairing (mismo patron que RustPlus-Discord-Bot)
+  // Iniciar escucha de pairing (patron de rustplusplus - ON_DATA_RECEIVED + appData)
   try {
     if (state.fcmCredentials) {
       if (state.pushClient) state.pushClient.destroy();
 
-      state.pushClient = await listen(
-        state.fcmCredentials.gcm.androidId,
-        state.fcmCredentials.gcm.securityToken,
-        [],
-        ({ notification, persistentId }) => {
-          console.log('[Setup] Notificacion recibida!');
-          console.log('[Setup] Data:', JSON.stringify(notification).substring(0, 500));
+      const androidId = state.fcmCredentials.gcm.androidId;
+      const securityToken = state.fcmCredentials.gcm.securityToken;
 
-          const data = notification.data;
-          if (!data || !data.body) {
-            console.log('[Setup] Notificacion sin body, ignorando');
-            return;
-          }
+      state.pushClient = new PushReceiverClient(androidId, securityToken, []);
 
-          // Filtrar solo notificaciones de pairing
-          if (data.channelId !== 'pairing') {
-            console.log('[Setup] channelId:', data.channelId, '(no es pairing, ignorando)');
-            return;
-          }
+      state.pushClient.on('ON_DATA_RECEIVED', (data) => {
+        console.log('[Setup] FCM data recibida!');
 
-          const body = JSON.parse(data.body);
-          console.log('[Setup] Body:', JSON.stringify(body).substring(0, 300));
-
-          if (body.ip && body.port && body.playerId && body.playerToken) {
-            state.pairingData = {
-              serverIp: body.ip,
-              serverPort: body.port.toString(),
-              playerId: body.playerId.toString(),
-              playerToken: body.playerToken.toString(),
-              serverName: body.name || body.desc || 'Unknown Server',
-            };
-            console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
-            console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
-          }
+        const appData = data.appData;
+        if (!appData) {
+          console.log('[Setup] No appData, ignorando');
+          return;
         }
-      );
+
+        const channelId = appData.find(item => item.key === 'channelId')?.value;
+        const title = appData.find(item => item.key === 'title')?.value;
+        const bodyCheck = appData.find(item => item.key === 'body');
+
+        console.log('[Setup] channelId:', channelId, '| title:', title);
+
+        if (!channelId) {
+          console.log('[Setup] No channelId, ignorando');
+          return;
+        }
+
+        if (!bodyCheck) {
+          console.log('[Setup] No body en appData, ignorando');
+          return;
+        }
+
+        const body = JSON.parse(bodyCheck.value);
+        console.log('[Setup] Body:', JSON.stringify(body).substring(0, 300));
+
+        if (channelId === 'pairing' && body.ip && body.port && body.playerId && body.playerToken) {
+          state.pairingData = {
+            serverIp: body.ip,
+            serverPort: body.port.toString(),
+            playerId: body.playerId.toString(),
+            playerToken: body.playerToken.toString(),
+            serverName: title || body.name || body.desc || 'Unknown Server',
+          };
+          console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
+          console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
+          console.log('[Setup] PlayerID:', state.pairingData.playerId);
+        }
+      });
+
+      await state.pushClient.connect();
       console.log('[Setup] Push client conectado, escuchando pairing...');
       console.log('[Setup] Ahora ve al servidor de Rust y presiona "PAIR WITH SERVER" en Rust+');
     }
