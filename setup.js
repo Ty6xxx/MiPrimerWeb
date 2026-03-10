@@ -58,29 +58,33 @@ async function initFCM() {
     console.log('[Setup] GCM androidId:', state.fcmCredentials.gcm.androidId ? 'OK' : 'FALTA');
     console.log('[Setup] FCM token:', state.fcmCredentials.fcm.token ? 'OK' : 'FALTA');
 
-    const expoPushTokenResponse = await fetch(
-      'https://exp.host/--/api/v2/push/getExpoPushToken',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'fcm',
-          deviceId: state.fcmCredentials.fcm.token,
-          development: false,
-          experienceId: '@nicatronTg/rust-companion-app',
-          appId: 'com.facepunch.rust.companion',
-          deviceToken: state.fcmCredentials.fcm.token,
-          projectId: RUST_COMPANION.expoProjectId,
-        }),
+    // Intentar obtener Expo push token (opcional, funciona sin esto)
+    try {
+      const expoPushTokenResponse = await fetch(
+        'https://exp.host/--/api/v2/push/getExpoPushToken',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'fcm',
+            deviceId: state.fcmCredentials.fcm.token,
+            development: false,
+            experienceId: '@nicatronTg/rust-companion-app',
+            appId: 'com.facepunch.rust.companion',
+            deviceToken: state.fcmCredentials.fcm.token,
+            projectId: RUST_COMPANION.expoProjectId,
+          }),
+        }
+      );
+      const expoPushTokenData = await expoPushTokenResponse.json();
+      if (expoPushTokenData.data && expoPushTokenData.data.expoPushToken) {
+        state.expoPushToken = expoPushTokenData.data.expoPushToken;
+        console.log('[Setup] ExpoPushToken:', state.expoPushToken);
+      } else {
+        console.log('[Setup] Expo token no disponible, usando FCM directo (esto es OK)');
       }
-    );
-    const expoPushTokenData = await expoPushTokenResponse.json();
-    console.log('[Setup] Expo response:', JSON.stringify(expoPushTokenData));
-    if (expoPushTokenData.data && expoPushTokenData.data.expoPushToken) {
-      state.expoPushToken = expoPushTokenData.data.expoPushToken;
-      console.log('[Setup] ExpoPushToken:', state.expoPushToken);
-    } else {
-      console.error('[Setup] No se obtuvo ExpoPushToken:', JSON.stringify(expoPushTokenData));
+    } catch (expoErr) {
+      console.log('[Setup] Expo token fallo, usando FCM directo (esto es OK)');
     }
     state.ready = true;
     console.log('[Setup] FCM listo. Esperando clientes...');
@@ -144,12 +148,19 @@ app.get('/api/rust-callback', async (req, res) => {
   state.rustplusAuthToken = token;
   console.log('[Setup] Rust+ Auth Token recibido');
 
-  // Registrar push con Rust Companion API
+  // Registrar push con Rust Companion API usando FCM directo
   try {
-    if (state.expoPushToken) {
+    if (state.fcmCredentials && state.fcmCredentials.fcm.token) {
       const deviceId = 'rustbot-' + Date.now();
-      console.log('[Setup] Registrando push con Facepunch...');
-      console.log('[Setup] ExpoPushToken:', state.expoPushToken);
+      const fcmToken = state.fcmCredentials.fcm.token;
+      console.log('[Setup] Registrando push con Facepunch (FCM directo)...');
+      console.log('[Setup] FCM Token (primeros 20):', fcmToken.substring(0, 20) + '...');
+
+      // Intentar con ExpoPushToken si existe, sino FCM directo
+      const pushToken = state.expoPushToken || fcmToken;
+      const pushKind = state.expoPushToken ? 3 : 0;
+      console.log('[Setup] PushKind:', pushKind, '| Token type:', state.expoPushToken ? 'Expo' : 'FCM');
+
       const pushRes = await fetch('https://companion-rust.facepunch.com:443/api/push/register', {
         method: 'POST',
         headers: {
@@ -159,14 +170,14 @@ app.get('/api/rust-callback', async (req, res) => {
         body: JSON.stringify({
           AuthToken: token,
           DeviceId: deviceId,
-          PushKind: 3,
-          PushToken: state.expoPushToken,
+          PushKind: pushKind,
+          PushToken: pushToken,
         }),
       });
       const pushResText = await pushRes.text();
       console.log('[Setup] Respuesta de Facepunch:', pushRes.status, pushResText);
     } else {
-      console.error('[Setup] No hay ExpoPushToken! FCM no se inicializo correctamente.');
+      console.error('[Setup] No hay FCM credentials! Reinicia el setup.');
     }
   } catch (err) {
     console.error('[Setup] Error registrando push:', err.message);
