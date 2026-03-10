@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const AndroidFCM = require('@liamcottle/push-receiver/src/android/fcm');
 const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
 
 const app = express();
@@ -13,84 +12,106 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ========================
 let botConfig = {};
 const botConfigPath = path.join(__dirname, 'bot-config.json');
+const rustplusConfigPath = path.join(__dirname, 'rustplus.config.json');
 
 // Cargar config del developer si existe
 if (fs.existsSync(botConfigPath)) {
   botConfig = JSON.parse(fs.readFileSync(botConfigPath, 'utf-8'));
 }
 
-// Estado global del setup del cliente
+// Estado global del setup
 const state = {
   fcmCredentials: null,
-  expoPushToken: null,
-  rustplusAuthToken: null,
   pushClient: null,
   pairingData: null,
   ready: false,
 };
 
-// Constantes de Rust+ Companion App
-const RUST_COMPANION = {
-  apiKey: 'AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY',
-  projectId: 'rust-companion-app',
-  gcmSenderId: '976529667804',
-  gmsAppId: '1:976529667804:android:d6f1ddeb4403b338fea619',
-  androidPackageName: 'com.facepunch.rust.companion',
-  androidPackageCert: 'E28D05345FB78A7A1A63D70F4A302DBF426CA5AD',
-  expoProjectId: '49451aca-a822-41e6-ad59-955718d0ff9c',
-};
-
 // ========================
-// Al iniciar: registrar FCM automaticamente
+// Cargar credenciales FCM de rustplus.config.json
+// (generado por: npx @liamcottle/rustplus.js fcm-register)
 // ========================
-async function initFCM() {
-  try {
-    console.log('[Setup] Registrando con FCM...');
-    state.fcmCredentials = await AndroidFCM.register(
-      RUST_COMPANION.apiKey,
-      RUST_COMPANION.projectId,
-      RUST_COMPANION.gcmSenderId,
-      RUST_COMPANION.gmsAppId,
-      RUST_COMPANION.androidPackageName,
-      RUST_COMPANION.androidPackageCert,
-    );
-    console.log('[Setup] FCM registrado OK');
-    console.log('[Setup] GCM androidId:', state.fcmCredentials.gcm.androidId ? 'OK' : 'FALTA');
-    console.log('[Setup] FCM token:', state.fcmCredentials.fcm.token ? 'OK' : 'FALTA');
-
-    // Intentar obtener Expo push token (opcional, funciona sin esto)
-    try {
-      const expoPushTokenResponse = await fetch(
-        'https://exp.host/--/api/v2/push/getExpoPushToken',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'fcm',
-            deviceId: state.fcmCredentials.fcm.token,
-            development: false,
-            experienceId: '@nicatronTg/rust-companion-app',
-            appId: 'com.facepunch.rust.companion',
-            deviceToken: state.fcmCredentials.fcm.token,
-            projectId: RUST_COMPANION.expoProjectId,
-          }),
-        }
-      );
-      const expoPushTokenData = await expoPushTokenResponse.json();
-      if (expoPushTokenData.data && expoPushTokenData.data.expoPushToken) {
-        state.expoPushToken = expoPushTokenData.data.expoPushToken;
-        console.log('[Setup] ExpoPushToken:', state.expoPushToken);
-      } else {
-        console.log('[Setup] Expo token no disponible, usando FCM directo (esto es OK)');
-      }
-    } catch (expoErr) {
-      console.log('[Setup] Expo token fallo, usando FCM directo (esto es OK)');
-    }
-    state.ready = true;
-    console.log('[Setup] FCM listo. Esperando clientes...');
-  } catch (err) {
-    console.error('[Setup] Error en FCM:', err.message);
+function loadFcmCredentials() {
+  if (!fs.existsSync(rustplusConfigPath)) {
+    console.log('[Setup] ERROR: rustplus.config.json no encontrado!');
+    console.log('[Setup] Ejecuta primero: npx @liamcottle/rustplus.js fcm-register');
+    console.log('[Setup] Luego coloca el archivo rustplus.config.json en la carpeta del bot.');
+    return false;
   }
+
+  const rustPlusConfig = JSON.parse(fs.readFileSync(rustplusConfigPath, 'utf-8'));
+
+  if (!rustPlusConfig.fcm_credentials) {
+    console.log('[Setup] ERROR: fcm_credentials no encontrado en rustplus.config.json');
+    console.log('[Setup] Ejecuta: npx @liamcottle/rustplus.js fcm-register');
+    return false;
+  }
+
+  state.fcmCredentials = rustPlusConfig.fcm_credentials;
+  console.log('[Setup] FCM credentials cargadas OK');
+  console.log('[Setup] android_id:', state.fcmCredentials.gcm.android_id ? 'OK' : 'FALTA');
+  console.log('[Setup] security_token:', state.fcmCredentials.gcm.security_token ? 'OK' : 'FALTA');
+  state.ready = true;
+  return true;
+}
+
+// ========================
+// Iniciar escucha FCM (mismo patron que rustplusplus)
+// ========================
+async function startFcmListener() {
+  if (!state.fcmCredentials) return;
+  if (state.pushClient) state.pushClient.destroy();
+
+  const androidId = state.fcmCredentials.gcm.android_id;
+  const securityToken = state.fcmCredentials.gcm.security_token;
+
+  state.pushClient = new PushReceiverClient(androidId, securityToken, []);
+
+  state.pushClient.on('ON_DATA_RECEIVED', (data) => {
+    console.log('[Setup] FCM data recibida!');
+
+    const appData = data.appData;
+    if (!appData) {
+      console.log('[Setup] No appData, ignorando');
+      return;
+    }
+
+    const channelId = appData.find(item => item.key === 'channelId')?.value;
+    const title = appData.find(item => item.key === 'title')?.value;
+    const bodyCheck = appData.find(item => item.key === 'body');
+
+    console.log('[Setup] channelId:', channelId, '| title:', title);
+
+    if (!channelId) {
+      console.log('[Setup] No channelId, ignorando');
+      return;
+    }
+
+    if (!bodyCheck) {
+      console.log('[Setup] No body en appData, ignorando');
+      return;
+    }
+
+    const body = JSON.parse(bodyCheck.value);
+    console.log('[Setup] Body:', JSON.stringify(body).substring(0, 300));
+
+    if (channelId === 'pairing' && body.ip && body.port && body.playerId && body.playerToken) {
+      state.pairingData = {
+        serverIp: body.ip,
+        serverPort: body.port.toString(),
+        playerId: body.playerId.toString(),
+        playerToken: body.playerToken.toString(),
+        serverName: title || body.name || body.desc || 'Unknown Server',
+      };
+      console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
+      console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
+      console.log('[Setup] PlayerID:', state.pairingData.playerId);
+    }
+  });
+
+  await state.pushClient.connect();
+  console.log('[Setup] Push client conectado, escuchando pairing...');
+  console.log('[Setup] Entra al servidor de Rust y presiona "PAIR WITH SERVER" en Rust+');
 }
 
 // ========================
@@ -132,130 +153,10 @@ app.get('/api/bot-info', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     fcmReady: state.ready,
-    steamLinked: !!state.rustplusAuthToken,
+    steamLinked: true, // Ya no necesitamos Steam login separado
     paired: !!state.pairingData,
     pairingData: state.pairingData,
   });
-});
-
-// Callback de Rust+ login
-app.get('/api/rust-callback', async (req, res) => {
-  const token = req.query.token;
-  if (!token) {
-    return res.redirect('/?error=no_token');
-  }
-
-  state.rustplusAuthToken = token;
-  console.log('[Setup] Rust+ Auth Token recibido');
-
-  // Esperar a que FCM este listo si aun no termino
-  if (!state.ready) {
-    console.log('[Setup] Esperando a que FCM termine de registrarse...');
-    await new Promise((resolve) => {
-      const check = setInterval(() => {
-        if (state.ready) { clearInterval(check); resolve(); }
-      }, 500);
-      // Timeout de 30 segundos
-      setTimeout(() => { clearInterval(check); resolve(); }, 30000);
-    });
-  }
-
-  // Registrar push con Rust Companion API usando FCM directo
-  try {
-    if (state.fcmCredentials && state.fcmCredentials.fcm.token) {
-      const deviceId = 'rustbot-' + Date.now();
-      const fcmToken = state.fcmCredentials.fcm.token;
-      console.log('[Setup] Registrando push con Facepunch (FCM directo)...');
-      console.log('[Setup] FCM Token (primeros 20):', fcmToken.substring(0, 20) + '...');
-
-      // Intentar con ExpoPushToken si existe, sino FCM directo
-      const pushToken = state.expoPushToken || fcmToken;
-      const pushKind = state.expoPushToken ? 3 : 0;
-      console.log('[Setup] PushKind:', pushKind, '| Token type:', state.expoPushToken ? 'Expo' : 'FCM');
-
-      const pushRes = await fetch('https://companion-rust.facepunch.com:443/api/push/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          AuthToken: token,
-          DeviceId: deviceId,
-          PushKind: pushKind,
-          PushToken: pushToken,
-        }),
-      });
-      const pushResText = await pushRes.text();
-      console.log('[Setup] Respuesta de Facepunch:', pushRes.status, pushResText);
-    } else {
-      console.error('[Setup] No hay FCM credentials! Reinicia el setup.');
-    }
-  } catch (err) {
-    console.error('[Setup] Error registrando push:', err.message);
-  }
-
-  // Iniciar escucha de pairing (patron de rustplusplus - ON_DATA_RECEIVED + appData)
-  try {
-    if (state.fcmCredentials) {
-      if (state.pushClient) state.pushClient.destroy();
-
-      const androidId = state.fcmCredentials.gcm.androidId;
-      const securityToken = state.fcmCredentials.gcm.securityToken;
-
-      state.pushClient = new PushReceiverClient(androidId, securityToken, []);
-
-      state.pushClient.on('ON_DATA_RECEIVED', (data) => {
-        console.log('[Setup] FCM data recibida!');
-
-        const appData = data.appData;
-        if (!appData) {
-          console.log('[Setup] No appData, ignorando');
-          return;
-        }
-
-        const channelId = appData.find(item => item.key === 'channelId')?.value;
-        const title = appData.find(item => item.key === 'title')?.value;
-        const bodyCheck = appData.find(item => item.key === 'body');
-
-        console.log('[Setup] channelId:', channelId, '| title:', title);
-
-        if (!channelId) {
-          console.log('[Setup] No channelId, ignorando');
-          return;
-        }
-
-        if (!bodyCheck) {
-          console.log('[Setup] No body en appData, ignorando');
-          return;
-        }
-
-        const body = JSON.parse(bodyCheck.value);
-        console.log('[Setup] Body:', JSON.stringify(body).substring(0, 300));
-
-        if (channelId === 'pairing' && body.ip && body.port && body.playerId && body.playerToken) {
-          state.pairingData = {
-            serverIp: body.ip,
-            serverPort: body.port.toString(),
-            playerId: body.playerId.toString(),
-            playerToken: body.playerToken.toString(),
-            serverName: title || body.name || body.desc || 'Unknown Server',
-          };
-          console.log('[Setup] PAIRING EXITOSO:', state.pairingData.serverName);
-          console.log('[Setup] IP:', state.pairingData.serverIp, 'Puerto:', state.pairingData.serverPort);
-          console.log('[Setup] PlayerID:', state.pairingData.playerId);
-        }
-      });
-
-      await state.pushClient.connect();
-      console.log('[Setup] Push client conectado, escuchando pairing...');
-      console.log('[Setup] Ahora ve al servidor de Rust y presiona "PAIR WITH SERVER" en Rust+');
-    }
-  } catch (err) {
-    console.error('[Setup] Error iniciando escucha:', err);
-  }
-
-  res.redirect('/?rust=ok');
 });
 
 // Guardar config final del cliente
@@ -304,5 +205,15 @@ app.listen(PORT, async () => {
     console.log('[!] Bot no configurado. Abre /admin.html para configurar tu bot primero.');
   }
 
-  await initFCM();
+  // Paso 1: Cargar credenciales FCM
+  const loaded = loadFcmCredentials();
+  if (!loaded) {
+    console.log('\n[!] Para generar rustplus.config.json ejecuta:');
+    console.log('    npx @liamcottle/rustplus.js fcm-register');
+    console.log('    Luego reinicia este setup.\n');
+    return;
+  }
+
+  // Paso 2: Iniciar listener FCM para pairing
+  await startFcmListener();
 });
