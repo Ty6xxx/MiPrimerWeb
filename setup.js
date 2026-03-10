@@ -148,6 +148,18 @@ app.get('/api/rust-callback', async (req, res) => {
   state.rustplusAuthToken = token;
   console.log('[Setup] Rust+ Auth Token recibido');
 
+  // Esperar a que FCM este listo si aun no termino
+  if (!state.ready) {
+    console.log('[Setup] Esperando a que FCM termine de registrarse...');
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (state.ready) { clearInterval(check); resolve(); }
+      }, 500);
+      // Timeout de 30 segundos
+      setTimeout(() => { clearInterval(check); resolve(); }, 30000);
+    });
+  }
+
   // Registrar push con Rust Companion API usando FCM directo
   try {
     if (state.fcmCredentials && state.fcmCredentials.fcm.token) {
