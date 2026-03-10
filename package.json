@@ -4,7 +4,7 @@
   "description": "Bot de Discord para Rust+ (Smart Devices, Eventos, Team Chat, Vending Machines)",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node setup.js",
     "setup": "node setup.js",
     "register": "node src/commands/register-commands.js"
   },
