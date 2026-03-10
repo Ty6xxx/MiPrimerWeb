@@ -196,17 +196,17 @@ app.get('/api/rust-callback', async (req, res) => {
         []
       );
 
-      state.pushClient.on('ON_NOTIFICATION_RECEIVED', (notification) => {
-        console.log('[Setup] Notificacion recibida:', JSON.stringify(notification).substring(0, 200));
+      // Funcion para procesar datos de pairing
+      function processPairingData(data) {
         try {
           let body = null;
 
-          // Intentar parsear de diferentes formatos
-          if (notification.data && notification.data.body) {
-            body = JSON.parse(notification.data.body);
-          } else if (notification.data && notification.data.title) {
-            // Algunas notificaciones vienen con otro formato
-            console.log('[Setup] Notificacion (title):', notification.data.title);
+          if (typeof data === 'string') {
+            body = JSON.parse(data);
+          } else if (data && data.body) {
+            body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+          } else if (data && data.ip) {
+            body = data;
           }
 
           if (body) {
@@ -224,12 +224,30 @@ app.get('/api/rust-callback', async (req, res) => {
             }
           }
         } catch (e) {
-          console.error('[Setup] Error parseando notificacion:', e);
+          console.error('[Setup] Error parseando:', e.message);
+        }
+      }
+
+      // Notificaciones encriptadas (push notifications)
+      state.pushClient.on('ON_NOTIFICATION_RECEIVED', ({ notification, persistentId }) => {
+        console.log('[Setup] Notificacion recibida:', JSON.stringify(notification).substring(0, 300));
+        if (notification && notification.data) {
+          processPairingData(notification.data);
         }
       });
 
-      state.pushClient.on('ON_MESSAGE_RECEIVED', (msg) => {
-        console.log('[Setup] Mensaje FCM recibido:', JSON.stringify(msg).substring(0, 200));
+      // Mensajes de datos no encriptados
+      state.pushClient.on('ON_DATA_RECEIVED', (data) => {
+        console.log('[Setup] Data recibida:', JSON.stringify(data).substring(0, 300));
+        // Buscar en appData
+        if (data && data.appData) {
+          const appDataObj = {};
+          for (const item of data.appData) {
+            appDataObj[item.key] = item.value;
+          }
+          console.log('[Setup] AppData:', JSON.stringify(appDataObj).substring(0, 300));
+          processPairingData(appDataObj);
+        }
       });
 
       await state.pushClient.connect();
