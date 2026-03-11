@@ -1,7 +1,7 @@
 /**
  * Parche post-install para @liamcottle/rustplus.js
- * Cambia los campos 'required' a 'optional' en SellOrder
- * para evitar el crash "missing required 'itemIsBlueprint'"
+ * Cambia TODOS los campos 'required' a 'optional' en rustplus.proto
+ * para evitar crashes por campos faltantes del servidor de Rust.
  */
 const fs = require('fs');
 const path = require('path');
@@ -14,31 +14,12 @@ if (!fs.existsSync(protoPath)) {
 }
 
 let content = fs.readFileSync(protoPath, 'utf-8');
+const count = (content.match(/required/g) || []).length;
 
-const original = `	message SellOrder {
-		required int32 itemId = 1;
-		required int32 quantity = 2;
-		required int32 currencyId = 3;
-		required int32 costPerItem = 4;
-		required int32 amountInStock = 5;
-		required bool itemIsBlueprint = 6;
-		required bool currencyIsBlueprint = 7;`;
-
-const patched = `	message SellOrder {
-		optional int32 itemId = 1;
-		optional int32 quantity = 2;
-		optional int32 currencyId = 3;
-		optional int32 costPerItem = 4;
-		optional int32 amountInStock = 5;
-		optional bool itemIsBlueprint = 6;
-		optional bool currencyIsBlueprint = 7;`;
-
-if (content.includes(original)) {
-  content = content.replace(original, patched);
+if (count > 0) {
+  content = content.replace(/required/g, 'optional');
   fs.writeFileSync(protoPath, content);
-  console.log('[Patch] rustplus.proto parcheado: SellOrder fields -> optional');
-} else if (content.includes(patched)) {
-  console.log('[Patch] rustplus.proto ya esta parcheado.');
+  console.log(`[Patch] rustplus.proto parcheado: ${count} campos 'required' -> 'optional'`);
 } else {
-  console.log('[Patch] No se pudo aplicar el parche (formato inesperado).');
+  console.log('[Patch] rustplus.proto ya esta parcheado (0 campos required).');
 }
