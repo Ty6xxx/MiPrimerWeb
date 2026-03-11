@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node setup.js",
     "setup": "node setup.js",
-    "register": "node src/commands/register-commands.js"
+    "register": "node src/commands/register-commands.js",
+    "postinstall": "node patches/fix-rustplus-proto.js"
   },
   "keywords": [],
   "author": "",
