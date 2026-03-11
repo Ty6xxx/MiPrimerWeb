@@ -1,5 +1,6 @@
 const { handleDeviceCommand } = require('./smart-devices');
 const { parseDuration, formatDuration, calculateDistance } = require('./state');
+const { getSetting, setSetting } = require('./bot-config');
 
 // Prefijo para comandos en el team chat del juego
 const COMMAND_PREFIX = '!';
