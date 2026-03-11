@@ -78,16 +78,29 @@ async function startPairing() {
     const title = appData.find(item => item.key === 'title')?.value;
     const bodyCheck = appData.find(item => item.key === 'body');
 
-    console.log('[Pairing] channelId:', channelId, '| title:', title);
+    // Notificar cualquier mensaje FCM recibido
+    if (channelId && channelId !== 'pairing') {
+      console.log(`[FCM] Notificacion: [${channelId}] ${title || 'Sin titulo'}`);
+    }
 
     if (channelId !== 'pairing' || !bodyCheck) return;
+
+    console.log('[Pairing] Datos de pairing recibidos...');
 
     const body = JSON.parse(bodyCheck.value);
 
     if (body.ip && body.port && body.playerId && body.playerToken) {
-      console.log(`[Pairing] EXITOSO! Servidor: ${title || body.name}`);
-      console.log(`[Pairing] IP: ${body.ip} Puerto: ${body.port}`);
-      console.log(`[Pairing] PlayerID: ${body.playerId}`);
+      console.log('');
+      console.log('============================================');
+      console.log('  PAIRING EXITOSO!');
+      console.log('============================================');
+      console.log(`  Servidor: ${title || body.name || 'Desconocido'}`);
+      console.log(`  IP:       ${body.ip}`);
+      console.log(`  Puerto:   ${body.port}`);
+      console.log(`  PlayerID: ${body.playerId}`);
+      console.log(`  Token:    ${body.playerToken.toString().slice(0, 6)}...`);
+      console.log('============================================');
+      console.log('');
 
       // Guardar en .env
       const envPath = path.join(__dirname, '.env');
@@ -113,7 +126,9 @@ async function startPairing() {
       }
 
       fs.writeFileSync(envPath, envContent.trim() + '\n');
-      console.log('[Pairing] Datos guardados en .env\n');
+      console.log('[Pairing] Datos guardados en .env');
+      console.log('[Pairing] Iniciando bot automaticamente...');
+      console.log('');
 
       // Destruir listener
       pushClient.destroy();
@@ -224,7 +239,15 @@ function startBot() {
   // Rust+ Events
   // ========================
   rustClient.on('ready', async () => {
-    console.log('[Rust+] Conectado al servidor');
+    console.log('');
+    console.log('============================================');
+    console.log('  BOT CONECTADO Y FUNCIONANDO!');
+    console.log('============================================');
+    console.log(`  Servidor: ${config.rust.serverIp}:${config.rust.serverPort}`);
+    console.log('  Comandos ! activos en el team chat');
+    console.log('  Escribe !help en Rust para ver comandos');
+    console.log('============================================');
+    console.log('');
 
     teamMonitorTimer = setInterval(async () => {
       try {
