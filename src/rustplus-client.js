@@ -14,6 +14,15 @@ class RustPlusClient extends EventEmitter {
   connect() {
     const { serverIp, serverPort, playerId, playerToken } = config.rust;
 
+    if (!serverIp || !serverPort || !playerId || !playerToken) {
+      console.error('[Rust+] Faltan datos de conexion (IP, Puerto, PlayerID o Token).');
+      return;
+    }
+
+    // Limpiar conexion anterior si existe
+    this.stopEventPolling();
+    this.connected = false;
+
     this.client = new RustPlus(serverIp, serverPort, playerId, playerToken);
 
     this.client.on('connecting', () => {
@@ -69,6 +78,7 @@ class RustPlusClient extends EventEmitter {
 
   // --- Server Info ---
   async getServerInfo() {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
       this.client.getInfo((msg) => {
         if (msg.response && msg.response.info) {
@@ -83,6 +93,7 @@ class RustPlusClient extends EventEmitter {
 
   // --- Time ---
   async getTime() {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
       this.client.getTime((msg) => {
         if (msg.response && msg.response.time) {
@@ -97,6 +108,7 @@ class RustPlusClient extends EventEmitter {
 
   // --- Team Info ---
   async getTeamInfo() {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
       this.client.getTeamInfo((msg) => {
         if (msg.response && msg.response.teamInfo) {
@@ -111,6 +123,7 @@ class RustPlusClient extends EventEmitter {
 
   // --- Map Markers (Vending, Cargo, Heli, etc.) ---
   async getMapMarkers() {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
       this.client.getMapMarkers((msg) => {
         if (msg.response && msg.response.mapMarkers) {
@@ -125,6 +138,7 @@ class RustPlusClient extends EventEmitter {
 
   // --- Entity Info ---
   async getEntityInfo(entityId) {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
       this.client.getEntityInfo(entityId, (msg) => {
         if (msg.response && msg.response.entityInfo) {
@@ -139,6 +153,7 @@ class RustPlusClient extends EventEmitter {
 
   // --- Smart Switch Control ---
   async turnOn(entityId) {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
       this.client.turnSmartSwitchOn(entityId, (msg) => {
         if (msg.response) {
@@ -152,6 +167,7 @@ class RustPlusClient extends EventEmitter {
   }
 
   async turnOff(entityId) {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
       this.client.turnSmartSwitchOff(entityId, (msg) => {
         if (msg.response) {
@@ -166,27 +182,38 @@ class RustPlusClient extends EventEmitter {
 
   // --- Team Chat ---
   sendTeamMessage(message) {
-    this.client.sendTeamMessage(message);
+    if (!this.client || !this.connected) return;
+    try {
+      this.client.sendTeamMessage(message);
+    } catch (err) {
+      console.error('[Rust+] Error enviando mensaje:', err.message);
+    }
   }
 
   // --- Promote to Team Leader ---
   async promoteToLeader(steamId) {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     return new Promise((resolve, reject) => {
-      this.client.sendRequest({
-        promoteToLeader: { steamId: BigInt(steamId) },
-      }, (msg) => {
-        if (msg.response) {
-          resolve(true);
-        } else {
-          reject(new Error('No se pudo cambiar el lider'));
-        }
-        return true;
-      });
+      try {
+        this.client.sendRequest({
+          promoteToLeader: { steamId: BigInt(steamId) },
+        }, (msg) => {
+          if (msg.response) {
+            resolve(true);
+          } else {
+            reject(new Error('No se pudo cambiar el lider'));
+          }
+          return true;
+        });
+      } catch (err) {
+        reject(new Error(`Error al promover lider: ${err.message}`));
+      }
     });
   }
 
   // --- Event Polling (detectar eventos del mapa) ---
   startEventPolling() {
+    this.stopEventPolling();
     this.eventPollTimer = setInterval(async () => {
       try {
         const markers = await this.getMapMarkers();
@@ -258,6 +285,7 @@ class RustPlusClient extends EventEmitter {
 
   // --- Buscar items en Vending Machines ---
   async searchVending(itemName) {
+    if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
     const markers = await this.getMapMarkers();
     const vendingMarkers = markers.filter((m) => m.type === 3); // VendingMachine
     const results = [];

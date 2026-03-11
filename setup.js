@@ -41,13 +41,23 @@ async function startPairing() {
     return;
   }
 
-  const rustPlusConfig = JSON.parse(fs.readFileSync(rustplusConfigPath, 'utf-8'));
+  let rustPlusConfig;
+  try {
+    rustPlusConfig = JSON.parse(fs.readFileSync(rustplusConfigPath, 'utf-8'));
+  } catch (err) {
+    console.log('[Pairing] ERROR: rustplus.config.json corrupto o ilegible:', err.message);
+    return;
+  }
   if (!rustPlusConfig.fcm_credentials) {
     console.log('[Pairing] ERROR: fcm_credentials no encontrado. Regenera rustplus.config.json.');
     return;
   }
 
   const creds = rustPlusConfig.fcm_credentials;
+  if (!creds.gcm) {
+    console.log('[Pairing] ERROR: gcm no encontrado en fcm_credentials. Regenera rustplus.config.json.');
+    return;
+  }
   const androidId = (creds.gcm.android_id || creds.gcm.androidId || '').toString();
   const securityToken = (creds.gcm.security_token || creds.gcm.securityToken || '').toString();
 
@@ -116,7 +126,13 @@ async function startPairing() {
     }
   });
 
-  await pushClient.connect();
+  try {
+    await pushClient.connect();
+  } catch (err) {
+    console.log('[Pairing] ERROR al conectar FCM:', err.message);
+    console.log('[Pairing] Verifica tu rustplus.config.json y tu conexion a internet.');
+    return;
+  }
 
   console.log('============================================');
   console.log('  MODO PAIRING ACTIVO');
@@ -260,7 +276,11 @@ function startBot() {
   });
 
   // Iniciar
-  discord.login(config.discord.token);
+  discord.login(config.discord.token).catch((err) => {
+    console.error('[Bot] ERROR al conectar Discord:', err.message);
+    console.log('[Bot] Verifica que DISCORD_TOKEN sea correcto en .env');
+    process.exit(1);
+  });
 
   process.on('unhandledRejection', (err) => {
     console.error('[Bot] Error no manejado:', err);
