@@ -305,7 +305,6 @@ function startBot() {
   });
 
   rustClient.on('teamMessage', async msg => {
-    if (msg.steamId === config.rust.playerId) return;
     const response = await handleTeamMessage(rustClient, msg);
     if (response) rustClient.sendGameMessage(response);
   });

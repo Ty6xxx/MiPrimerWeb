@@ -104,9 +104,6 @@ rustClient.on('gameEventEnd', (event) => {
 
 // Manejar mensajes del team chat
 rustClient.on('teamMessage', async (msg) => {
-  // Ignorar mensajes del propio bot (evitar bucles)
-  if (msg.steamId === config.rust.playerId) return;
-
   const response = await handleTeamMessage(rustClient, msg);
   if (response) {
     // Usar sendGameMessage para chunking automatico y limpieza
