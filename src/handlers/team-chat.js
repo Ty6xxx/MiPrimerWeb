@@ -177,7 +177,7 @@ async function handleTeamMessage(rustClient, msg) {
     case 'bot': {
       const botMsg = args.join(' ');
       if (!botMsg) return 'Uso: !bot <mensaje>';
-      rustClient.sendTeamMessage(`[BOT] ${botMsg}`);
+      rustClient.sendGameMessage(`[BOT] ${botMsg}`);
       return null; // No responder, ya se envio el mensaje
     }
 

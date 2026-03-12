@@ -30,7 +30,7 @@ setHandlerState(botState);
 setChatState(botState);
 botState.setSendMessage((msg) => {
   if (!botState.isSilenced()) {
-    rustClient.sendTeamMessage(msg);
+    rustClient.sendGameMessage(msg);
   }
 });
 
@@ -81,8 +81,8 @@ rustClient.on('gameEvent', (event) => {
 
   const message = formatEventMessage(event);
 
-  // Team chat
-  rustClient.sendTeamMessage(`[BOT] ${message.replace(/\*\*/g, '').replace(/[^\x00-\x7F]/g, '')}`);
+  // Team chat (texto plano, sin markdown ni emojis)
+  rustClient.sendGameMessage(`[BOT] ${message}`);
 
   // Discord
   if (notificationChannel) {
@@ -95,7 +95,7 @@ rustClient.on('gameEventEnd', (event) => {
 
   const message = formatEventEndMessage(event);
 
-  rustClient.sendTeamMessage(`[BOT] ${message.replace(/\*\*/g, '').replace(/[^\x00-\x7F]/g, '')}`);
+  rustClient.sendGameMessage(`[BOT] ${message}`);
 
   if (notificationChannel) {
     notificationChannel.send(message);
@@ -104,9 +104,13 @@ rustClient.on('gameEventEnd', (event) => {
 
 // Manejar mensajes del team chat
 rustClient.on('teamMessage', async (msg) => {
+  // Ignorar mensajes del propio bot (evitar bucles)
+  if (msg.steamId === config.rust.playerId) return;
+
   const response = await handleTeamMessage(rustClient, msg);
   if (response) {
-    rustClient.sendTeamMessage(response);
+    // Usar sendGameMessage para chunking automatico y limpieza
+    rustClient.sendGameMessage(response);
   }
 });
 
@@ -146,8 +150,8 @@ function startTeamMonitoring() {
       // Enviar mensajes de team chat (con delay para no spamear)
       for (let i = 0; i < chatMessages.length; i++) {
         setTimeout(() => {
-          rustClient.sendTeamMessage(chatMessages[i]);
-        }, i * 1500);
+          rustClient.sendGameMessage(chatMessages[i]);
+        }, i * 1800);
       }
 
       // Notificaciones en Discord

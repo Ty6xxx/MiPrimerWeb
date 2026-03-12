@@ -190,6 +190,53 @@ class RustPlusClient extends EventEmitter {
     }
   }
 
+  /**
+   * Envia un mensaje al team chat del juego, limpiando markdown/emojis
+   * y dividiendo en chunks de 128 chars si es necesario.
+   * @param {string} text  Texto a enviar (puede tener saltos de linea)
+   * @param {number} delay Milisegundos entre mensajes (default 1500)
+   */
+  sendGameMessage(text, delay = 1500) {
+    if (!this.client || !this.connected) return;
+
+    // Limpiar markdown y emojis; conservar solo ASCII imprimible
+    const clean = text
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/`/g, '')
+      .replace(/[^\x20-\x7E\n]/g, '') // solo ASCII imprimible + salto de linea
+      .trim();
+
+    // Dividir por lineas primero, luego por longitud (max 128 chars)
+    const MAX = 128;
+    const chunks = [];
+    for (const line of clean.split('\n')) {
+      if (line.length === 0) continue;
+      if (line.length <= MAX) {
+        chunks.push(line);
+      } else {
+        // Dividir lineas largas en palabras
+        const words = line.split(' ');
+        let current = '';
+        for (const word of words) {
+          if ((current + (current ? ' ' : '') + word).length > MAX) {
+            if (current) chunks.push(current);
+            current = word.slice(0, MAX);
+          } else {
+            current = current ? `${current} ${word}` : word;
+          }
+        }
+        if (current) chunks.push(current);
+      }
+    }
+
+    // Limitar a 5 chunks para no spamear
+    const toSend = chunks.slice(0, 5);
+    toSend.forEach((chunk, i) => {
+      setTimeout(() => this.sendTeamMessage(chunk), i * delay);
+    });
+  }
+
   // --- Promote to Team Leader ---
   async promoteToLeader(steamId) {
     if (!this.client || !this.connected) throw new Error('No conectado a Rust+');
