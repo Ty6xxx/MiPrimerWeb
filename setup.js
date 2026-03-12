@@ -1,14 +1,36 @@
 const path = require('path');
-const fs = require('fs');
+const fs   = require('fs');
 const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
 
 require('dotenv').config();
 
-const rustplusConfigPath = path.join(__dirname, 'rustplus.config.json');
+const ENV_PATH    = path.join(__dirname, '.env');
+const CONFIG_PATH = path.join(__dirname, 'rustplus.config.json');
 
 // ========================
-// Verificar si el .env ya tiene datos validos de Rust+
+// Punto de entrada
 // ========================
+if (hasValidRustConfig() && hasDiscordConfig()) {
+  console.log('[Bot] Configuracion completa en .env\n');
+  startBot();
+} else if (!hasDiscordConfig()) {
+  console.log('[Bot] Discord no configurado. Iniciando servidor web en http://localhost:3000/admin\n');
+  startWebServer();
+} else {
+  // Discord OK pero faltan datos de Rust → mostrar web para hacer pairing
+  console.log('[Bot] Faltan datos de Rust+. Abre http://localhost:3000 para hacer el pairing.\n');
+  startWebServer();
+}
+
+// ========================
+// Verificaciones
+// ========================
+function hasDiscordConfig() {
+  const token = process.env.DISCORD_TOKEN;
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  return !!(token && clientId && !token.includes('tu_'));
+}
+
 function hasValidRustConfig() {
   const { RUST_SERVER_IP, RUST_SERVER_PORT, RUST_PLAYER_ID, RUST_PLAYER_TOKEN } = process.env;
   if (!RUST_SERVER_IP || !RUST_SERVER_PORT || !RUST_PLAYER_ID || !RUST_PLAYER_TOKEN) return false;
@@ -17,214 +39,140 @@ function hasValidRustConfig() {
   return true;
 }
 
-if (hasValidRustConfig()) {
-  console.log('[Bot] Datos de Rust+ encontrados en .env\n');
-  startBot();
-} else {
-  console.log('[Bot] Faltan datos de Rust+ en .env, iniciando pairing...\n');
-  startPairing();
+// ========================
+// MODO WEB (setup inicial)
+// ========================
+function startWebServer() {
+  const { createWebServer } = require('./src/web-server');
+
+  const app = createWebServer(() => {
+    // Callback cuando el setup completa
+    startBot();
+  });
+
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`[Web] Servidor corriendo en http://localhost:${PORT}`);
+    if (!hasDiscordConfig()) {
+      console.log(`[Web] → Abre http://localhost:${PORT}/admin para configurar Discord primero`);
+    } else {
+      console.log(`[Web] → Abre http://localhost:${PORT} para conectar tu servidor de Rust`);
+    }
+  });
 }
 
 // ========================
-// MODO PAIRING
+// MODO PAIRING LEGACY (sin web, con rustplus.config.json)
 // ========================
-async function startPairing() {
-  if (!fs.existsSync(rustplusConfigPath)) {
+function startLegacyPairing() {
+  if (!fs.existsSync(CONFIG_PATH)) {
     console.log('============================================');
     console.log('  CONFIGURACION INICIAL');
     console.log('============================================');
     console.log('');
-    console.log('1. Ejecuta: npx @liamcottle/rustplus.js fcm-register');
-    console.log('2. Coloca rustplus.config.json en esta carpeta');
-    console.log('3. Vuelve a ejecutar: npm start');
+    console.log('Opcion A (recomendada):');
+    console.log('  Abre http://localhost:3000 y sigue los pasos');
+    console.log('');
+    console.log('Opcion B (manual):');
+    console.log('  1. Ejecuta: npx @liamcottle/rustplus.js fcm-register');
+    console.log('  2. Coloca rustplus.config.json en esta carpeta');
+    console.log('  3. Vuelve a ejecutar: npm start');
     console.log('============================================\n');
     return;
   }
 
-  let rustPlusConfig;
-  try {
-    rustPlusConfig = JSON.parse(fs.readFileSync(rustplusConfigPath, 'utf-8'));
-  } catch (err) {
-    console.log('[Pairing] ERROR: rustplus.config.json corrupto o ilegible:', err.message);
+  let config;
+  try { config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')); }
+  catch (err) { console.log('[Pairing] ERROR leyendo rustplus.config.json:', err.message); return; }
+
+  if (!config.fcm_credentials?.gcm) {
+    console.log('[Pairing] ERROR: fcm_credentials.gcm no encontrado.');
     return;
   }
 
-  if (!rustPlusConfig.fcm_credentials) {
-    console.log('[Pairing] ERROR: fcm_credentials no encontrado en rustplus.config.json.');
-    console.log('[Pairing] Regenera el archivo ejecutando: npx @liamcottle/rustplus.js fcm-register');
+  const androidId     = String(config.fcm_credentials.gcm.androidId     || config.fcm_credentials.gcm.android_id     || '');
+  const securityToken = String(config.fcm_credentials.gcm.securityToken || config.fcm_credentials.gcm.security_token || '');
+
+  if (!androidId || !securityToken) {
+    console.log('[Pairing] ERROR: androidId o securityToken vacios.');
     return;
   }
-
-  const creds = rustPlusConfig.fcm_credentials;
-  if (!creds.gcm) {
-    console.log('[Pairing] ERROR: gcm no encontrado en fcm_credentials.');
-    console.log('[Pairing] Regenera el archivo ejecutando: npx @liamcottle/rustplus.js fcm-register');
-    return;
-  }
-
-  // Soportar camelCase (androidId) y snake_case (android_id)
-  const androidId = String(creds.gcm.androidId || creds.gcm.android_id || '');
-  const securityToken = String(creds.gcm.securityToken || creds.gcm.security_token || '');
-
-  if (!androidId || !securityToken || androidId === 'undefined' || securityToken === 'undefined') {
-    console.log('[Pairing] ERROR: Credenciales FCM invalidas (androidId o securityToken vacios).');
-    console.log('[Pairing] Contenido gcm:', JSON.stringify(creds.gcm));
-    console.log('[Pairing] Regenera el archivo ejecutando: npx @liamcottle/rustplus.js fcm-register');
-    return;
-  }
-
-  console.log('[Pairing] FCM credentials OK');
-  console.log('[Pairing] androidId:', androidId.slice(0, 6) + '...');
-  console.log('[Pairing] securityToken:', securityToken.slice(0, 4) + '...');
 
   createFcmListener(androidId, securityToken);
 }
 
 function createFcmListener(androidId, securityToken) {
-  let pushClient;
-  try {
-    pushClient = new PushReceiverClient(androidId, securityToken, []);
-  } catch (err) {
-    console.log('[Pairing] ERROR creando PushReceiverClient:', err.message);
-    return;
-  }
+  const pushClient = new PushReceiverClient(androidId, securityToken, []);
 
   pushClient.on('connect', () => {
-    console.log('[FCM] Conexion establecida con Google FCM.');
-    console.log('');
-    console.log('============================================');
+    console.log('[FCM] Conexion establecida.');
+    console.log('\n============================================');
     console.log('  MODO PAIRING ACTIVO');
     console.log('============================================');
-    console.log('');
-    console.log('Entra al servidor de Rust y presiona');
-    console.log('"PAIR WITH SERVER" en el menu de Rust+');
-    console.log('');
+    console.log('Abre Rust → ESC → Rust+ → PAIR WITH SERVER');
     console.log('El bot arrancara automaticamente.');
     console.log('============================================\n');
   });
 
   pushClient.on('disconnect', () => {
-    console.log('[FCM] Desconectado. Reconectando automaticamente...');
+    console.log('[FCM] Desconectado. Reconectando...');
   });
 
   pushClient.on('ON_DATA_RECEIVED', (data) => {
-    handleFcmData(data, pushClient);
+    handleFcmPairing(data, pushClient);
   });
 
-  // Iniciar conexion sin await para que el event loop maneje los eventos
-  pushClient.connect().catch((err) => {
-    console.log('[Pairing] ERROR al conectar FCM:', err.message);
-    console.log('[Pairing] Causas comunes:');
-    console.log('  - No hay conexion a internet');
-    console.log('  - Las credenciales FCM estan caducadas (regenera rustplus.config.json)');
-    console.log('  - Firewall bloqueando puerto 5228');
-    console.log('');
-    console.log('[Pairing] Reintentando en 30 segundos...');
+  pushClient.connect().catch(err => {
+    console.log('[FCM] ERROR al conectar:', err.message);
+    console.log('[FCM] Reintentando en 30s...');
     setTimeout(() => createFcmListener(androidId, securityToken), 30000);
   });
 }
 
-function handleFcmData(data, pushClient) {
-  // La data puede venir en diferentes formatos segun la version de push-receiver
+function handleFcmPairing(data, pushClient) {
   const appData = data.appData || data.rawData || data.data;
+  if (!appData) return;
 
-  if (!appData) {
-    console.log('[FCM] Notificacion recibida sin appData.');
-    console.log('[FCM] Data raw:', JSON.stringify(data).slice(0, 200));
-    return;
-  }
-
-  // appData puede ser un array [{key, value}] o un objeto {key: value}
   let channelId, title, bodyRaw;
-
   if (Array.isArray(appData)) {
-    channelId = appData.find(item => item.key === 'channelId')?.value;
-    title     = appData.find(item => item.key === 'title')?.value;
-    const bodyItem = appData.find(item => item.key === 'body');
-    bodyRaw   = bodyItem?.value;
+    channelId = appData.find(i => i.key === 'channelId')?.value;
+    title     = appData.find(i => i.key === 'title')?.value;
+    bodyRaw   = appData.find(i => i.key === 'body')?.value;
   } else {
     channelId = appData.channelId;
     title     = appData.title;
     bodyRaw   = appData.body;
   }
 
-  if (!channelId) {
-    console.log('[FCM] Notificacion recibida sin channelId (ignorada).');
-    return;
-  }
+  console.log(`[FCM] Notificacion: channelId="${channelId}", title="${title || ''}"`);
 
-  console.log(`[FCM] Notificacion recibida: channelId="${channelId}", title="${title || ''}"`);
-
-  if (channelId !== 'pairing') {
-    // Mostrar otras notificaciones (alarmas, muertes, etc.) pero no procesarlas aqui
-    console.log(`[FCM] Canal "${channelId}" ignorado en modo pairing.`);
-    return;
-  }
-
-  if (!bodyRaw) {
-    console.log('[FCM] Notificacion de pairing sin body (ignorada).');
-    return;
-  }
+  if (channelId !== 'pairing' || !bodyRaw) return;
 
   let body;
-  try {
-    body = typeof bodyRaw === 'string' ? JSON.parse(bodyRaw) : bodyRaw;
-  } catch (err) {
-    console.log('[FCM] ERROR parseando body:', err.message);
-    console.log('[FCM] Body raw:', bodyRaw);
-    return;
-  }
+  try { body = typeof bodyRaw === 'string' ? JSON.parse(bodyRaw) : bodyRaw; }
+  catch { return; }
 
-  console.log('[Pairing] Tipo de pairing:', body.type);
+  if (body.type !== 'server') return;
+  if (!body.ip || !body.port || !body.playerId || body.playerToken === undefined) return;
 
-  // Solo nos interesa el pairing de servidor
-  if (body.type !== 'server') {
-    console.log(`[Pairing] Tipo "${body.type}" ignorado (solo procesamos "server").`);
-    return;
-  }
-
-  // Validar campos necesarios
-  if (!body.ip || !body.port || !body.playerId || body.playerToken === undefined) {
-    console.log('[Pairing] ERROR: Faltan campos en la notificacion de pairing:');
-    console.log('[Pairing] ip:', body.ip);
-    console.log('[Pairing] port:', body.port);
-    console.log('[Pairing] playerId:', body.playerId);
-    console.log('[Pairing] playerToken:', body.playerToken !== undefined ? '[OK]' : '[MISSING]');
-    return;
-  }
-
-  const serverName = title || body.name || 'Desconocido';
-  const ip = String(body.ip);
-  const port = String(body.port);
-  const playerId = String(body.playerId);
-  const playerToken = String(body.playerToken);
-
-  console.log('');
-  console.log('============================================');
+  console.log('\n============================================');
   console.log('  PAIRING EXITOSO!');
   console.log('============================================');
-  console.log(`  Servidor: ${serverName}`);
-  console.log(`  IP:       ${ip}`);
-  console.log(`  Puerto:   ${port}`);
-  console.log(`  PlayerID: ${playerId}`);
-  console.log(`  Token:    ${playerToken.slice(0, 6)}...`);
-  console.log('============================================');
-  console.log('');
-
-  // Guardar en .env
-  const envPath = path.join(__dirname, '.env');
-  let envContent = '';
-  if (fs.existsSync(envPath)) {
-    envContent = fs.readFileSync(envPath, 'utf-8');
-  }
+  console.log(`  Servidor: ${title || body.name}`);
+  console.log(`  IP:       ${body.ip}`);
+  console.log(`  Puerto:   ${body.port}`);
+  console.log('============================================\n');
 
   const rustVars = {
-    RUST_SERVER_IP:    ip,
-    RUST_SERVER_PORT:  port,
-    RUST_PLAYER_ID:    playerId,
-    RUST_PLAYER_TOKEN: playerToken,
+    RUST_SERVER_IP:    String(body.ip),
+    RUST_SERVER_PORT:  String(body.port),
+    RUST_PLAYER_ID:    String(body.playerId),
+    RUST_PLAYER_TOKEN: String(body.playerToken),
   };
 
+  // Leer .env actual y actualizar
+  let envContent = '';
+  try { envContent = fs.readFileSync(ENV_PATH, 'utf-8'); } catch {}
   for (const [key, value] of Object.entries(rustVars)) {
     const regex = new RegExp(`^${key}=.*$`, 'm');
     if (regex.test(envContent)) {
@@ -233,25 +181,11 @@ function handleFcmData(data, pushClient) {
       envContent += `\n${key}=${value}`;
     }
   }
+  fs.writeFileSync(ENV_PATH, envContent.trim() + '\n');
 
-  try {
-    fs.writeFileSync(envPath, envContent.trim() + '\n');
-    console.log('[Pairing] Datos guardados en .env');
-  } catch (err) {
-    console.log('[Pairing] ERROR guardando .env:', err.message);
-    return;
-  }
-
-  // Destruir listener FCM y arrancar bot
-  try {
-    pushClient.destroy();
-  } catch (_) {}
-
-  // Setear en process.env para que config.js los lea sin releer el .env
   Object.assign(process.env, rustVars);
 
-  console.log('[Pairing] Iniciando bot...');
-  console.log('');
+  try { pushClient.destroy(); } catch {}
   startBot();
 }
 
@@ -260,16 +194,16 @@ function handleFcmData(data, pushClient) {
 // ========================
 function startBot() {
   const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
-  const RustPlusClient = require('./src/rustplus-client');
+  const RustPlusClient  = require('./src/rustplus-client');
   const { registerCommands } = require('./src/commands/register-commands');
   const { handleInteraction, setBotState: setHandlerState } = require('./src/commands/handle-commands');
-  const { handleTeamMessage, setBotState: setChatState } = require('./src/handlers/team-chat');
+  const { handleTeamMessage, setBotState: setChatState }    = require('./src/handlers/team-chat');
   const { formatEventMessage, formatEventEndMessage, formatTeamChangeEmbed } = require('./src/handlers/events');
   const { BotState } = require('./src/handlers/state');
   const config = require('./src/config');
 
   if (!config.discord.token) {
-    console.log('[Bot] ERROR: DISCORD_TOKEN no configurado en .env');
+    console.log('[Bot] ERROR: DISCORD_TOKEN no configurado.');
     return;
   }
 
@@ -287,16 +221,13 @@ function startBot() {
   });
 
   const rustClient = new RustPlusClient();
-
   let notificationChannel = null;
-  let teamMonitorTimer = null;
+  let teamMonitorTimer    = null;
 
   setHandlerState(botState);
   setChatState(botState);
-  botState.setSendMessage((msg) => {
-    if (!botState.isSilenced()) {
-      rustClient.sendGameMessage(msg);
-    }
+  botState.setSendMessage(msg => {
+    if (!botState.isSilenced()) rustClient.sendGameMessage(msg);
   });
 
   // ========================
@@ -311,17 +242,15 @@ function startBot() {
         guild.channels.cache.find(c => c.name === 'rust-bot' && c.type === ChannelType.GuildText) ||
         guild.channels.cache.find(c => c.name === 'rust'     && c.type === ChannelType.GuildText) ||
         guild.channels.cache.find(c => c.type === ChannelType.GuildText);
-
-      if (notificationChannel) {
+      if (notificationChannel)
         console.log(`[Discord] Canal de notificaciones: #${notificationChannel.name}`);
-      }
     }
 
     await registerCommands();
     rustClient.connect();
   });
 
-  discord.on('interactionCreate', (interaction) => {
+  discord.on('interactionCreate', interaction => {
     handleInteraction(interaction, rustClient);
   });
 
@@ -334,68 +263,59 @@ function startBot() {
     console.log('  BOT CONECTADO Y FUNCIONANDO!');
     console.log('============================================');
     console.log(`  Servidor: ${config.rust.serverIp}:${config.rust.serverPort}`);
-    console.log('  Comandos ! activos en el team chat');
     console.log('  Escribe !help en Rust para ver comandos');
-    console.log('============================================');
-    console.log('');
+    console.log('============================================\n');
 
     if (teamMonitorTimer) clearInterval(teamMonitorTimer);
     teamMonitorTimer = setInterval(async () => {
       try {
         const teamInfo = await rustClient.getTeamInfo();
-        const changes = botState.updateTeamState(teamInfo.members);
-
+        const changes  = botState.updateTeamState(teamInfo.members);
         if (botState.isSilenced()) return;
 
-        const chatMessages = [];
-        for (const name of changes.connected)    chatMessages.push(`[BOT] ${name} se conecto.`);
-        for (const name of changes.disconnected) chatMessages.push(`[BOT] ${name} se desconecto.`);
-        for (const d of changes.died)            chatMessages.push(`[BOT] ${d.name} murio en (${Math.round(d.x)}, ${Math.round(d.y)}) | Muertes: ${d.deathCount}`);
-        for (const name of changes.afkStart)     chatMessages.push(`[BOT] ${name} esta AFK.`);
-        for (const name of changes.afkEnd)       chatMessages.push(`[BOT] ${name} volvio de AFK.`);
+        const msgs = [];
+        for (const name of changes.connected)    msgs.push(`[BOT] ${name} se conecto.`);
+        for (const name of changes.disconnected) msgs.push(`[BOT] ${name} se desconecto.`);
+        for (const d of changes.died)            msgs.push(`[BOT] ${d.name} murio en (${Math.round(d.x)}, ${Math.round(d.y)}) | Muertes: ${d.deathCount}`);
+        for (const name of changes.afkStart)     msgs.push(`[BOT] ${name} esta AFK.`);
+        for (const name of changes.afkEnd)       msgs.push(`[BOT] ${name} volvio de AFK.`);
 
-        for (let i = 0; i < chatMessages.length; i++) {
-          setTimeout(() => rustClient.sendGameMessage(chatMessages[i]), i * 1800);
-        }
+        msgs.forEach((m, i) => setTimeout(() => rustClient.sendGameMessage(m), i * 1800));
 
         if (notificationChannel) {
           const embeds = formatTeamChangeEmbed(changes);
-          for (const embed of embeds) {
-            notificationChannel.send({ embeds: [embed] });
-          }
+          for (const embed of embeds) notificationChannel.send({ embeds: [embed] });
         }
       } catch (_) {}
     }, 15000);
   });
 
-  rustClient.on('gameEvent', (event) => {
+  rustClient.on('gameEvent', event => {
     if (botState.isSilenced()) return;
-    const message = formatEventMessage(event);
-    rustClient.sendGameMessage(`[BOT] ${message}`);
-    if (notificationChannel) notificationChannel.send(message);
+    const msg = formatEventMessage(event);
+    rustClient.sendGameMessage(`[BOT] ${msg}`);
+    if (notificationChannel) notificationChannel.send(msg);
   });
 
-  rustClient.on('gameEventEnd', (event) => {
+  rustClient.on('gameEventEnd', event => {
     if (botState.isSilenced()) return;
-    const message = formatEventEndMessage(event);
-    rustClient.sendGameMessage(`[BOT] ${message}`);
-    if (notificationChannel) notificationChannel.send(message);
+    const msg = formatEventEndMessage(event);
+    rustClient.sendGameMessage(`[BOT] ${msg}`);
+    if (notificationChannel) notificationChannel.send(msg);
   });
 
-  rustClient.on('teamMessage', async (msg) => {
-    // Ignorar mensajes propios del bot
+  rustClient.on('teamMessage', async msg => {
     if (msg.steamId === config.rust.playerId) return;
     const response = await handleTeamMessage(rustClient, msg);
     if (response) rustClient.sendGameMessage(response);
   });
 
-  discord.login(config.discord.token).catch((err) => {
-    console.error('[Bot] ERROR al conectar Discord:', err.message);
-    console.log('[Bot] Verifica que DISCORD_TOKEN sea correcto en .env');
+  discord.login(config.discord.token).catch(err => {
+    console.error('[Bot] ERROR Discord login:', err.message);
     process.exit(1);
   });
 
-  process.on('unhandledRejection', (err) => {
+  process.on('unhandledRejection', err => {
     console.error('[Bot] Error no manejado:', err.message || err);
   });
 
