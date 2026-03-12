@@ -1,6 +1,17 @@
 const { handleDeviceCommand } = require('./smart-devices');
 const { parseDuration, formatDuration, calculateDistance } = require('./state');
 const { getSetting, setSetting } = require('./bot-config');
+const {
+  searchItems,
+  getDecayInfo,
+  getRecycleInfo,
+  getCraftInfo,
+  getStackInfo,
+  getResearchInfo,
+  formatIngredients,
+  formatRecycleYield,
+  WORKBENCH_NAMES,
+} = require('../utils/item-search');
 
 // Prefijo para comandos en el team chat del juego
 const COMMAND_PREFIX = '!';
@@ -295,24 +306,129 @@ async function handleTeamMessage(rustClient, msg) {
     }
 
     // ========================
+    // Chinook / Bradley
+    // ========================
+    case 'chinook':
+    case 'ch47': {
+      try {
+        const markers = await rustClient.getMapMarkers();
+        const chinook = markers.find(m => m.type === 4);
+        if (!chinook) return 'No hay Chinook (CH47) en el mapa.';
+        return `Chinook CH47 en (${Math.round(chinook.x)}, ${Math.round(chinook.y)})`;
+      } catch {
+        return 'Error al buscar Chinook.';
+      }
+    }
+
+    case 'bradley': {
+      try {
+        const markers = await rustClient.getMapMarkers();
+        const bradley = markers.find(m => m.type === 7);
+        if (!bradley) return 'No hay Bradley APC en el mapa.';
+        return `Bradley APC en (${Math.round(bradley.x)}, ${Math.round(bradley.y)})`;
+      } catch {
+        return 'Error al buscar Bradley.';
+      }
+    }
+
+    // ========================
+    // Info de items (rustlabs data)
+    // ========================
+    case 'decay': {
+      const query = args.join(' ');
+      if (!query) return 'Uso: !decay <item>';
+      const results = searchItems(query);
+      if (results.length === 0) return `No se encontro "${query}".`;
+      for (const item of results) {
+        const d = getDecayInfo(item.id);
+        if (!d) continue;
+        const parts = [`${item.name} (${d.hp} HP)`];
+        if (d.decayString) parts.push(`General: ${d.decayString}`);
+        if (d.decayOutsideString) parts.push(`Ext: ${d.decayOutsideString}`);
+        if (d.decayInsideString) parts.push(`Int: ${d.decayInsideString}`);
+        return parts.join(' | ');
+      }
+      return `No hay datos de decay para "${query}".`;
+    }
+
+    case 'recycle': {
+      const query = args.join(' ');
+      if (!query) return 'Uso: !recycle <item>';
+      const results = searchItems(query);
+      if (results.length === 0) return `No se encontro "${query}".`;
+      for (const item of results) {
+        const r = getRecycleInfo(item.id);
+        if (!r) continue;
+        const yld = r.recycler && r.recycler.yield && r.recycler.yield.length > 0
+          ? formatRecycleYield(r.recycler.yield).join(', ')
+          : 'Nada';
+        return `${item.name} -> ${yld}`;
+      }
+      return `No hay datos de reciclaje para "${query}".`;
+    }
+
+    case 'craft': {
+      const query = args.join(' ');
+      if (!query) return 'Uso: !craft <item>';
+      const results = searchItems(query);
+      if (results.length === 0) return `No se encontro "${query}".`;
+      for (const item of results) {
+        const c = getCraftInfo(item.id);
+        if (!c) continue;
+        const wb = c.workbench ? (WORKBENCH_NAMES[c.workbench] || `WB:${c.workbench}`) : 'Sin WB';
+        const ings = formatIngredients(c.ingredients).join(', ');
+        return `${item.name} [${wb}] (${c.timeString}): ${ings}`;
+      }
+      return `No hay datos de crafteo para "${query}".`;
+    }
+
+    case 'stack': {
+      const query = args.join(' ');
+      if (!query) return 'Uso: !stack <item>';
+      const results = searchItems(query);
+      if (results.length === 0) return `No se encontro "${query}".`;
+      const lines = [];
+      for (const item of results.slice(0, 3)) {
+        const s = getStackInfo(item.id);
+        if (!s) continue;
+        lines.push(`${item.name}: ${s.quantity}x`);
+      }
+      return lines.length > 0 ? lines.join(' | ') : `No hay datos de stack para "${query}".`;
+    }
+
+    case 'research': {
+      const query = args.join(' ');
+      if (!query) return 'Uso: !research <item>';
+      const results = searchItems(query);
+      if (results.length === 0) return `No se encontro "${query}".`;
+      for (const item of results) {
+        const r = getResearchInfo(item.id);
+        if (!r) continue;
+        const parts = [item.name];
+        if (r.researchTable) parts.push(`RT: ${r.researchTable} scrap`);
+        if (r.workbench) {
+          const wb = WORKBENCH_NAMES[r.workbench.type] || `WB:${r.workbench.type}`;
+          parts.push(`${wb}: ${r.workbench.scrap} scrap`);
+        }
+        return parts.join(' | ');
+      }
+      return `No hay datos de investigacion para "${query}".`;
+    }
+
+    // ========================
     // Ayuda
     // ========================
     case 'help':
     case 'ayuda':
       return [
         'Comandos:',
-        '!pop - Jugadores online',
-        '!time - Hora del servidor',
-        '!online/!offline - Equipo',
-        '!afk - Miembros AFK',
-        '!alive - Mas tiempo vivo',
-        '!prox - Distancia entre mates',
-        '!silence <t> / !resume - Silenciar bot',
-        '!alarm <t> <n> / !remain / !stop <id>',
-        '!leader [nombre] - Cambiar lider',
-        '!cargo / !small / !large / !heli',
-        '!bot <msg> - Hablar como bot',
-        '!on/!off/!status <device>',
+        '!pop !time - Servidor',
+        '!online !offline !afk !alive !prox - Equipo',
+        '!cargo !heli !small !large !chinook !bradley - Mapa',
+        '!decay !recycle !craft !stack !research <item>',
+        '!silence <t> !resume !alarm <t> <n> !remain !stop <id>',
+        '!leader [nombre] !bot <msg>',
+        '!on !off !status <device>',
       ].join('\n');
 
     default:

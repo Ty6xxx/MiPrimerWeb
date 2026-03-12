@@ -6,6 +6,17 @@ const {
 } = require('../handlers/smart-devices');
 const { searchRaidCost } = require('../data/raid-costs');
 const { parseDuration, formatDuration, calculateDistance } = require('../handlers/state');
+const {
+  searchItems,
+  getDecayInfo,
+  getRecycleInfo,
+  getCraftInfo,
+  getStackInfo,
+  getResearchInfo,
+  formatIngredients,
+  formatRecycleYield,
+  WORKBENCH_NAMES,
+} = require('../utils/item-search');
 
 // Referencia al estado global (se setea desde index.js)
 let botState = null;
@@ -382,6 +393,156 @@ async function handleInteraction(interaction, rustClient) {
             await rustClient.promoteToLeader(target.steamId.toString());
             await interaction.editReply(`👑 **${target.name}** ahora es el lider del equipo.`);
           }
+        }
+        break;
+      }
+
+      case 'decay': {
+        await interaction.deferReply();
+        const query = interaction.options.getString('item');
+        const results = searchItems(query);
+        if (results.length === 0) {
+          await interaction.editReply(`No se encontro ningun item con "${query}".`);
+          break;
+        }
+        const lines = [];
+        for (const item of results) {
+          const d = getDecayInfo(item.id);
+          if (!d) continue;
+          const parts = [`⏳ **${item.name}** (${d.hp} HP)`];
+          if (d.decayString) parts.push(`General: ${d.decayString}`);
+          if (d.decayOutsideString) parts.push(`Exterior: ${d.decayOutsideString}`);
+          if (d.decayInsideString) parts.push(`Interior: ${d.decayInsideString}`);
+          if (d.decayUnderwaterString) parts.push(`Bajo agua: ${d.decayUnderwaterString}`);
+          lines.push(parts.join(' | '));
+        }
+        if (lines.length === 0) {
+          await interaction.editReply(`No hay datos de decay para "${query}".`);
+        } else {
+          await interaction.editReply(lines.join('\n'));
+        }
+        break;
+      }
+
+      case 'recycle': {
+        await interaction.deferReply();
+        const query = interaction.options.getString('item');
+        const results = searchItems(query);
+        if (results.length === 0) {
+          await interaction.editReply(`No se encontro ningun item con "${query}".`);
+          break;
+        }
+        const lines = [];
+        for (const item of results.slice(0, 3)) {
+          const r = getRecycleInfo(item.id);
+          if (!r) continue;
+          const recyclerYield = r.recycler && r.recycler.yield && r.recycler.yield.length > 0
+            ? formatRecycleYield(r.recycler.yield).join(', ')
+            : 'Nada';
+          lines.push(`♻️ **${item.name}** → ${recyclerYield}`);
+        }
+        if (lines.length === 0) {
+          await interaction.editReply(`No hay datos de reciclaje para "${query}".`);
+        } else {
+          await interaction.editReply(lines.join('\n'));
+        }
+        break;
+      }
+
+      case 'craft': {
+        await interaction.deferReply();
+        const query = interaction.options.getString('item');
+        const results = searchItems(query);
+        if (results.length === 0) {
+          await interaction.editReply(`No se encontro ningun item con "${query}".`);
+          break;
+        }
+        const lines = [];
+        for (const item of results.slice(0, 3)) {
+          const c = getCraftInfo(item.id);
+          if (!c) continue;
+          const wb = c.workbench ? (WORKBENCH_NAMES[c.workbench] || `WB:${c.workbench}`) : 'Sin workbench';
+          const ings = formatIngredients(c.ingredients).join(', ');
+          lines.push(`🔨 **${item.name}** [${wb}] (${c.timeString})\n  Ingredientes: ${ings}`);
+        }
+        if (lines.length === 0) {
+          await interaction.editReply(`No hay datos de crafteo para "${query}".`);
+        } else {
+          await interaction.editReply(lines.join('\n\n'));
+        }
+        break;
+      }
+
+      case 'stack': {
+        const query = interaction.options.getString('item');
+        const results = searchItems(query);
+        if (results.length === 0) {
+          await interaction.reply(`No se encontro ningun item con "${query}".`);
+          break;
+        }
+        const lines = [];
+        for (const item of results.slice(0, 5)) {
+          const s = getStackInfo(item.id);
+          if (!s) continue;
+          lines.push(`📦 **${item.name}**: ${s.quantity}x`);
+        }
+        if (lines.length === 0) {
+          await interaction.reply(`No hay datos de stack para "${query}".`);
+        } else {
+          await interaction.reply(lines.join('\n'));
+        }
+        break;
+      }
+
+      case 'research': {
+        const query = interaction.options.getString('item');
+        const results = searchItems(query);
+        if (results.length === 0) {
+          await interaction.reply(`No se encontro ningun item con "${query}".`);
+          break;
+        }
+        const lines = [];
+        for (const item of results.slice(0, 5)) {
+          const r = getResearchInfo(item.id);
+          if (!r) continue;
+          const parts = [`🔬 **${item.name}**`];
+          if (r.researchTable) parts.push(`Research Table: ${r.researchTable} scrap`);
+          if (r.workbench) {
+            const wb = WORKBENCH_NAMES[r.workbench.type] || `WB:${r.workbench.type}`;
+            parts.push(`${wb}: ${r.workbench.scrap} scrap (total: ${r.workbench.totalScrap})`);
+          }
+          lines.push(parts.join(' | '));
+        }
+        if (lines.length === 0) {
+          await interaction.reply(`No hay datos de investigacion para "${query}".`);
+        } else {
+          await interaction.reply(lines.join('\n'));
+        }
+        break;
+      }
+
+      case 'chinook': {
+        await interaction.deferReply();
+        const markers = await rustClient.getMapMarkers();
+        // Chinook type = 4
+        const chinook = markers.find(m => m.type === 4);
+        if (!chinook) {
+          await interaction.editReply('🚁 No hay Chinook (CH47) en el mapa.');
+        } else {
+          await interaction.editReply(`🚁 **Chinook CH47** en (${Math.round(chinook.x)}, ${Math.round(chinook.y)})`);
+        }
+        break;
+      }
+
+      case 'bradley': {
+        await interaction.deferReply();
+        const markers = await rustClient.getMapMarkers();
+        // Bradley type = 7
+        const bradley = markers.find(m => m.type === 7);
+        if (!bradley) {
+          await interaction.editReply('🚗 No hay Bradley APC en el mapa.');
+        } else {
+          await interaction.editReply(`🚗 **Bradley APC** en (${Math.round(bradley.x)}, ${Math.round(bradley.y)})`);
         }
         break;
       }

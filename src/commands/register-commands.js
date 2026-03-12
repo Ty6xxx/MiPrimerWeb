@@ -198,6 +198,49 @@ const commands = [
         .setDescription('Nombre del jugador (vacio = robar lider)')
         .setRequired(false)
     ),
+
+  new SlashCommandBuilder()
+    .setName('decay')
+    .setDescription('Muestra el tiempo de decaimiento de un item/estructura')
+    .addStringOption((opt) =>
+      opt.setName('item').setDescription('Nombre del item o estructura').setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('recycle')
+    .setDescription('Muestra lo que obtienes al reciclar un item')
+    .addStringOption((opt) =>
+      opt.setName('item').setDescription('Nombre del item').setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('craft')
+    .setDescription('Muestra la receta de crafteo de un item')
+    .addStringOption((opt) =>
+      opt.setName('item').setDescription('Nombre del item').setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('stack')
+    .setDescription('Muestra el stack size de un item')
+    .addStringOption((opt) =>
+      opt.setName('item').setDescription('Nombre del item').setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('research')
+    .setDescription('Muestra el costo de investigar un item')
+    .addStringOption((opt) =>
+      opt.setName('item').setDescription('Nombre del item').setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('chinook')
+    .setDescription('Info sobre el Chinook (CH47) en el mapa'),
+
+  new SlashCommandBuilder()
+    .setName('bradley')
+    .setDescription('Info sobre el Bradley APC en el mapa'),
 ];
 
 async function registerCommands() {
